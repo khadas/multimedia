@@ -36,6 +36,7 @@ static char* drm_master_dev_name = "/dev/dri/card0";
 static char* drm_cli_dev_name = "/dev/dri/renderD128";
 static int drm_fd, drm_cli_fd;
 static int drm_mode_set;
+static int secure_mode;
 extern unsigned int global_plane_id;
 
 struct gem_buffer {
@@ -144,6 +145,8 @@ static int create_meson_gem_buffer(int fd, enum frame_format fmt,
             buffer->pitches[i] = width*2;
         } else {
             gem_create.flags = MESON_USE_VIDEO_PLANE;
+            if (secure_mode)
+                 gem_create.flags |= MESON_USE_PROTECTED;
             if (i == 0)
                 gem_create.size = width * height;
             else
@@ -657,11 +660,13 @@ int config_sys_node(const char* path, const char* value)
     return 0;
 }
 
-int display_engine_start()
+int display_engine_start(int smode)
 {
     unsigned int plane_id;
     drmModeModeInfo mode;
     int rc;
+
+    secure_mode = smode;
 
     drm_fd = drmOpen("meson", drm_master_dev_name);
     if (drm_fd < 0) {

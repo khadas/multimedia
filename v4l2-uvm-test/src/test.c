@@ -27,6 +27,7 @@ static char* media_file;
 static sem_t wait_for_end;
 int global_plane_id;
 int g_dw_mode = 16;
+static int secure_mode = 0;
 int ffmpeg_log = 0;
 
 static void usage(int argc, char **argv)
@@ -44,11 +45,12 @@ static void usage(int argc, char **argv)
                  "-h | --help          Print this message\n"
                  "-p | --plane=id      select display plane. 26[pri] 28[overlay 1] 30[overlay 2] 32[video]\n"
                  "-l | --log           enable more ffmpeg demux log.\n"
+                 "-s | --secure        secure video path.\n"
                  "",
                  argv[0]);
 }
 
-static const char short_options[] = "d:hf:p:l";
+static const char short_options[] = "d:hf:p:ls";
 
 static const struct option
 long_options[] = {
@@ -57,6 +59,7 @@ long_options[] = {
         { "help",   no_argument,       NULL, 'h' },
         { "plane",  required_argument, NULL, 'p' },
         { "log",  no_argument, NULL, 'l' },
+        { "secure",  no_argument, NULL, 's' },
         { 0, 0, 0, 0 }
 };
 
@@ -68,7 +71,7 @@ void decode_finish()
 int start_decoder(struct dmx_v_data *v_data)
 {
     int ret;
-    ret = v4l2_dec_init(v_data->type, decode_finish);
+    ret = v4l2_dec_init(v_data->type, secure_mode, decode_finish);
     if (ret) {
         printf("FATAL: start_decoder error:%d\n",ret);
         exit(1);
@@ -120,6 +123,10 @@ static int parse_para(int argc, char *argv[])
                 global_plane_id = atoi(optarg);
                 break;
 
+            case 's':
+                secure_mode = 1;
+                break;
+
             default:
                 usage(argc, argv);
                 return -1;
@@ -149,7 +156,7 @@ int main(int argc, char *argv[])
     sem_init(&wait_for_end, 0, 0);
 
     display_engine_register_cb(capture_buffer_recycle);
-    rc = display_engine_start();
+    rc = display_engine_start(secure_mode);
     if (rc < 0) {
         printf("Unable to start display engine\n");
         goto error;

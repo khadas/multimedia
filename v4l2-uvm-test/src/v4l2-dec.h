@@ -23,7 +23,7 @@ enum vdec_dw_mode {
 
 typedef void (*decode_finish_fn)();
 
-int v4l2_dec_init(enum vtype type, decode_finish_fn);
+int v4l2_dec_init(enum vtype type, int secure, decode_finish_fn);
 int v4l2_dec_destroy();
 
 int v4l2_dec_write_es(const uint8_t *data, int size);
