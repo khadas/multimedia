@@ -26,6 +26,8 @@
 static char* media_file;
 static sem_t wait_for_end;
 int global_plane_id;
+char mode_str[16];
+unsigned int vfresh;
 int g_dw_mode = 16;
 static int secure_mode = 0;
 int ffmpeg_log = 0;
@@ -44,13 +46,15 @@ static void usage(int argc, char **argv)
                  "-f | --file name     media file\n"
                  "-h | --help          Print this message\n"
                  "-p | --plane=id      select display plane. 26[pri] 28[overlay 1] 30[overlay 2] 32[video]\n"
+                 "-m | --mode str      set display mode. such as 3840x2160 or 3840x2160-60\n"
+                 "                                               1920x1080 or 1920x1080-60\n"
                  "-l | --log           enable more ffmpeg demux log.\n"
                  "-s | --secure        secure video path.\n"
                  "",
                  argv[0]);
 }
 
-static const char short_options[] = "d:hf:p:ls";
+static const char short_options[] = "d:hf:p:m:ls";
 
 static const struct option
 long_options[] = {
@@ -58,6 +62,7 @@ long_options[] = {
         { "file", required_argument, NULL, 'f' },
         { "help",   no_argument,       NULL, 'h' },
         { "plane",  required_argument, NULL, 'p' },
+        { "mode", required_argument, NULL, 'm' },
         { "log",  no_argument, NULL, 'l' },
         { "secure",  no_argument, NULL, 's' },
         { 0, 0, 0, 0 }
@@ -81,6 +86,8 @@ int start_decoder(struct dmx_v_data *v_data)
 
 static int parse_para(int argc, char *argv[])
 {
+    char *p;
+    unsigned int len;
     for (;;) {
         int idx;
         int c;
@@ -125,6 +132,19 @@ static int parse_para(int argc, char *argv[])
 
             case 's':
                 secure_mode = 1;
+                break;
+
+            case 'm':
+                p = strchr(optarg, '-');
+                if (p == NULL) {
+                    len	= strlen(optarg);
+                } else {
+                    vfresh = strtoul(p + 1, NULL, 0);
+                    len = p - optarg;
+                }
+
+                strncpy(mode_str, optarg, len);
+                printf("mode:%s, vfresh:%d.\n", mode_str, vfresh);
                 break;
 
             default:

@@ -38,6 +38,8 @@ static int drm_fd, drm_cli_fd;
 static int drm_mode_set;
 static int secure_mode;
 extern unsigned int global_plane_id;
+extern char mode_str[16];
+extern unsigned int vfresh;
 
 struct gem_buffer {
     uint32_t width;
@@ -514,7 +516,7 @@ static int init_drm(int fd, drmModeModeInfo *mode)
     drmModeConnector *connector = NULL;
     drmModeEncoder *encoder = NULL;
     int i, area;
-    drmModeModeInfo *curr_mode;
+    drmModeModeInfo *curr_mode = NULL;
 
 
     resources = drmModeGetResources(fd);
@@ -545,17 +547,37 @@ static int init_drm(int fd, drmModeModeInfo *mode)
     setup.connector_id = connector->connector_id;
 
     /* find preferred mode or the highest resolution mode: */
-    for (i = 0, area = 0; i < connector->count_modes; i++) {
-        drmModeModeInfo *current_mode = &connector->modes[i];
 
-        if (current_mode->type & DRM_MODE_TYPE_PREFERRED) {
-            curr_mode = current_mode;
+    if (*mode_str) {
+        for (i = 0; i < connector->count_modes; i++) {
+            drmModeModeInfo *current_mode = &connector->modes[i];
+
+            if (current_mode->name && strcmp(current_mode->name, mode_str) == 0) {
+                if (vfresh == 0 || current_mode->vrefresh == vfresh) {
+                    curr_mode = current_mode;
+                    printf("found the request mode: %s-%d.\n", current_mode->name,
+                            current_mode->vrefresh);
+                    break;
+                }
+            }
         }
+    }
 
-        int current_area = current_mode->hdisplay * current_mode->vdisplay;
-        if (current_area > area) {
-            curr_mode = current_mode;
-            area = current_area;
+    if (!curr_mode) {
+        printf("requested mode not found, using default mode!\n");
+        for (i = 0, area = 0; i < connector->count_modes; i++) {
+            drmModeModeInfo *current_mode = &connector->modes[i];
+
+            if (current_mode->type & DRM_MODE_TYPE_PREFERRED) {
+                curr_mode = current_mode;
+                break;
+            }
+
+            int current_area = current_mode->hdisplay * current_mode->vdisplay;
+            if (current_area > area) {
+                curr_mode = current_mode;
+                area = current_area;
+            }
         }
     }
 
