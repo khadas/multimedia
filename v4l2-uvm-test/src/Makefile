@@ -1,4 +1,4 @@
-OBJ = drm.c v4l2-dec.c test.c demux.c secmem.c
+OBJ = drm.c v4l2-dec.c test.c demux.c secmem.c vp9.c
 TARGET = v4l2-uvm-test
 
 # rules

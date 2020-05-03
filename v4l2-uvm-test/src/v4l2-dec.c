@@ -27,6 +27,7 @@
 #include "drm.h"
 #include "v4l2-dec.h"
 #include "secmem.h"
+#include "vp9.h"
 
 static const char* video_dev_name = "/dev/video26";
 static int video_fd;
@@ -701,7 +702,7 @@ int v4l2_dec_init(enum vtype type, int secure, decode_finish_fn cb)
         printf("set multiplanar fails\n");
         goto error;
     }
-    if (type == VIDEO_TYPE_VP9) {
+    if (type == VIDEO_TYPE_VP9 && !secure) {
         if (config_sys_node("/sys/module/amvdec_ports/parameters/vp9_need_prefix", "1")) {
             printf("set vp9_need_prefix fails\n");
             goto error;
@@ -976,17 +977,50 @@ int v4l2_dec_frame_done()
     }
     p = output_p.buf[cur_output_index];
     if (sInMemMode == V4L2_MEMORY_DMABUF) {
-        /* copy to secmem */
-        p->smem = secmem_alloc(p->used);
+        int frame_size = p->used;
+        int offset = 0;
+        struct vp9_superframe_split s;
+
+        if (output_p.pixelformat == V4L2_PIX_FMT_VP9) {
+            s.data = es_buf;
+            s.data_size = p->used;
+            ret = vp9_superframe_split_filter(&s);
+            if (ret) {
+                printf("parse vp9 superframe fail\n");
+                return 0;
+            }
+            frame_size = s.size + s.nb_frames * 16;
+        }
+
+        p->smem = secmem_alloc(frame_size);
         if (!p->smem) {
             printf("%s %d oom:%d\n", __func__, __LINE__, p->used);
             return 0;
         }
-        ret = secmem_fill(p->smem, es_buf, 0, p->used);
-        if (ret)
-            return 0;
+
+        /* copy to secmem */
+        if (output_p.pixelformat == V4L2_PIX_FMT_VP9) {
+            int stream_offset = s.size;
+            offset = frame_size;
+            for (int i = s.nb_frames; i > 0; i--) {
+                uint8_t header[16];
+                uint32_t sub_size = s.sizes[i - 1];
+
+                /* frame body */
+                offset -= sub_size;
+                stream_offset -= sub_size;
+                secmem_fill(p->smem, es_buf + stream_offset, offset, sub_size);
+
+                /* prepend header */
+                offset -= 16;
+                fill_vp9_header(header, sub_size);
+                secmem_fill(p->smem, header, offset, 16);
+            }
+        } else
+            secmem_fill(p->smem, es_buf, offset, p->used);
+
         p->v4lbuf.m.planes[0].m.fd = p->smem->fd;
-        p->v4lbuf.m.planes[0].length = p->used;
+        p->v4lbuf.m.planes[0].length = frame_size;
         p->v4lbuf.m.planes[0].data_offset = 0;
     }
     p->v4lbuf.m.planes[0].bytesused = p->used;
