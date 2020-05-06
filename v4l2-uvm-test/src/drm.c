@@ -198,9 +198,19 @@ static int close_buffer(int fd, struct gem_buffer *buffer)
 
         rc = drmIoctl(fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_dumb);
         if (rc < 0) {
-            fprintf(stderr, "Unable to destroy buffer: %s\n",
-                    strerror(errno));
-            return -1;
+            /* If handle was from drmPrimeFDToHandle, then fd is connected
+             * as render, we have to use drm_gem_close to release it.
+             */
+            if (errno == EACCES) {
+                struct drm_gem_close close_req;
+                close_req.handle = destroy_dumb.handle;
+                rc = drmIoctl(fd, DRM_IOCTL_GEM_CLOSE, &close_req);
+                if (rc < 0) {
+                    fprintf(stderr, "Unable to destroy buffer: %s\n",
+                            strerror(errno));
+                    return -1;
+                }
+            }
         }
     }
 
