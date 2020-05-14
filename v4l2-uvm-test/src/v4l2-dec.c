@@ -45,7 +45,7 @@ static uint8_t* es_buf;
 #ifdef DEBUG_FRAME
 static int frame_checksum;
 #endif
-#define ES_BUF_SIZE (2*1024*1024)
+#define ES_BUF_SIZE (4*1024*1024)
 
 static pthread_t dec_thread;
 bool quit_thread;
