@@ -799,11 +799,6 @@ int display_engine_start(int smode)
     get_properties(crtc, CRTC, setup.crtc_id);
     get_properties(connector, CONNECTOR, setup.connector_id);
 
-    /* enable video plane */
-    config_sys_node("/sys/class/video/disable_video", "0");
-    /* ignore frame duration */
-    config_sys_node("/sys/class/video/freerun_mode", "1");
-
     /* make osd transparent */
     rc = OsdBufferCreate(drm_cli_fd, setup.crtc_width, setup.crtc_height, &osd_gem_buf);
     if (rc) {
