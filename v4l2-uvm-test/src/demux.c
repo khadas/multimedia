@@ -75,16 +75,21 @@ static bool check_nal(uint8_t *data, int size) {
 static int demux_packet(AVPacket* pkt)
 {
     int decoded = pkt->size;
+    int64_t pts_us = 0;
+    AVRational ns_r = {1,DMX_SECOND};
 
     if (pkt->stream_index != video_stream_idx)
         return decoded;
+
+    if (pkt->pts != AV_NOPTS_VALUE)
+        pts_us = av_rescale_q(pkt->pts, video_stream->time_base, ns_r);
 
     /* video frame */
     video_frame_count++;
 #ifdef DEBUG_FRAME
     printf("video_frame n:%d pts:%llx size:%x\n",
             video_frame_count,
-            pkt->pts, pkt->size);
+            pts_us, pkt->size);
 #endif
 
     /* refer to ffmpeg hevc_mp4toannexb_filter()
@@ -133,7 +138,7 @@ static int demux_packet(AVPacket* pkt)
     } else {
         dec_cb->write(pkt->data, pkt->size);
     }
-    dec_cb->frame_done();
+    dec_cb->frame_done(pts_us);
 
     return decoded;
 }
@@ -442,8 +447,9 @@ int demux_init(const char *file, struct dmx_cb *cb)
 
 
         //printf("AV_CODEC_ID_H264:%d AV_CODEC_ID_H265:%d\n", AV_CODEC_ID_H264, AV_CODEC_ID_H265);
-        printf("video stream: format:%d %dx%d\n",
-                dec_ctx->codec_id, v_data.width, v_data.height);
+        printf("video stream: format:%d %dx%d tu:%d/%d\n ",
+                dec_ctx->codec_id, v_data.width, v_data.height,
+                video_stream->time_base.num, video_stream->time_base.den);
 
         dec_cb->meta_done(&v_data);
 

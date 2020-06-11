@@ -11,6 +11,8 @@
 
 #include <stdint.h>
 
+#define DMX_SECOND 1000000
+
 enum vtype {
     VIDEO_TYPE_MPEG2,
     VIDEO_TYPE_H264,
@@ -27,7 +29,7 @@ struct dmx_v_data {
 };
 
 typedef int (*dmx_write)(const uint8_t *data, int size);
-typedef int (*dmx_frame_done)(void);
+typedef int (*dmx_frame_done)(int64_t pts);
 typedef int (*dmx_meta_done)(struct dmx_v_data *);
 typedef int (*dmx_eos)(void);
 

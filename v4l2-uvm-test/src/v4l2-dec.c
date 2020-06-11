@@ -963,7 +963,7 @@ int v4l2_dec_write_es(const uint8_t *data, int size)
     return size;
 }
 
-int v4l2_dec_frame_done()
+int v4l2_dec_frame_done(int64_t  pts)
 {
     int ret;
     struct frame_buffer *p;
@@ -1024,6 +1024,11 @@ int v4l2_dec_frame_done()
         p->v4lbuf.m.planes[0].data_offset = 0;
     }
     p->v4lbuf.m.planes[0].bytesused = p->used;
+
+    /* convert from ns to timeval */
+    p->v4lbuf.timestamp.tv_sec = pts / DMX_SECOND;
+    p->v4lbuf.timestamp.tv_usec = pts % DMX_SECOND;
+
     pthread_mutex_lock(&output_p.lock);
     p->queued = true;
     pthread_mutex_unlock(&output_p.lock);
