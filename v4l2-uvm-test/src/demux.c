@@ -27,6 +27,7 @@ static int video_stream_idx = -1;
 
 /* for h264/265 */
 static int raw_stream;
+static int keyframe_seen;
 static int nal_size;
 static uint8_t s_nal_3[3] = {0,0,1};
 static uint8_t s_nal_4[4] = {0,0,0,1};
@@ -108,6 +109,14 @@ static int demux_packet(AVPacket* pkt)
             //printf("raw es frame\n");
         }
 
+        if (!keyframe_seen && !(pkt->flags & AV_PKT_FLAG_KEY)) {
+            printf("drop none I frame at beginning\n");
+            return decoded;
+        }
+        if (!keyframe_seen && (pkt->flags & AV_PKT_FLAG_KEY)) {
+            printf("Got I frame at beginning\n");
+            keyframe_seen = 1;
+        }
         /* data inside pkt->data is like:
          * len0 + data0 + len1 + data1 ... + lenN + dataN
          * lenX depends on the nal_size
