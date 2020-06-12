@@ -26,7 +26,9 @@
 #include "demux.h"
 #include "drm.h"
 #include "v4l2-dec.h"
+#ifdef CONFIG_SECMEM
 #include "secmem.h"
+#endif
 #include "vp9.h"
 
 static const char* video_dev_name = "/dev/video26";
@@ -213,8 +215,10 @@ static int destroy_output_port(int fd) {
     for (i = 0 ; i < req.count ; i++) {
         struct frame_buffer *buf = output_p.buf[i];
 
+#ifdef CONFIG_SECMEM
         if (sInMemMode == V4L2_MEMORY_DMABUF)
             secmem_free(buf->smem);
+#endif
 
         free(buf);
     }
@@ -510,9 +514,11 @@ static void *dec_thread_func(void * arg) {
                 pthread_mutex_unlock(&output_p.lock);
                 fb->used = 0;
                 d_o_rec_num++;
+#ifdef CONFIG_SECMEM
                 if (sInMemMode == V4L2_MEMORY_DMABUF) {
                     secmem_free(fb->smem);
                 }
+#endif
                 pthread_cond_signal(&output_p.wait);
             }
         }
@@ -680,12 +686,14 @@ int v4l2_dec_init(enum vtype type, int secure, decode_finish_fn cb)
     decode_finish_cb = cb;
 
     if (secure) {
+#ifdef CONFIG_SECMEM
         sInMemMode = V4L2_MEMORY_DMABUF;
         ret = secmem_init();
         if (ret) {
             printf("secmem_init fail %d\n",ret);
             return 1;
         }
+#endif
     } else
         sInMemMode = V4L2_MEMORY_MMAP;
 
@@ -880,7 +888,9 @@ int v4l2_dec_destroy()
     get_1st_data = false;
     pthread_mutex_destroy(&res_lock);
     close(video_fd);
+#ifdef CONFIG_SECMEM
     secmem_destroy();
+#endif
     if (es_buf)
         free(es_buf);
     return 0;
@@ -976,6 +986,7 @@ int v4l2_dec_frame_done(int64_t  pts)
         return 0;
     }
     p = output_p.buf[cur_output_index];
+#ifdef CONFIG_SECMEM
     if (sInMemMode == V4L2_MEMORY_DMABUF) {
         int frame_size = p->used;
         int offset = 0;
@@ -1023,6 +1034,7 @@ int v4l2_dec_frame_done(int64_t  pts)
         p->v4lbuf.m.planes[0].length = frame_size;
         p->v4lbuf.m.planes[0].data_offset = 0;
     }
+#endif
     p->v4lbuf.m.planes[0].bytesused = p->used;
 
     /* convert from ns to timeval */

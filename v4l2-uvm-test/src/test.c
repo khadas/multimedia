@@ -131,6 +131,10 @@ static int parse_para(int argc, char *argv[])
                 break;
 
             case 's':
+#ifndef CONFIG_SECMEM
+                printf("secure mode can not be enabled, check compile option\n");
+                exit(1);
+#endif
                 secure_mode = 1;
                 break;
 
