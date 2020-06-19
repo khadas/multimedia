@@ -30,7 +30,7 @@ char mode_str[16];
 unsigned int vfresh;
 int g_dw_mode = 16;
 static int secure_mode = 0;
-int ffmpeg_log = 0;
+int log_level = 0x04;
 
 static void usage(int argc, char **argv)
 {
@@ -48,13 +48,13 @@ static void usage(int argc, char **argv)
                  "-p | --plane=id      select display plane. 26[pri] 28[overlay 1] 30[overlay 2] 32[video]\n"
                  "-m | --mode str      set display mode. such as 3840x2160 or 3840x2160-60\n"
                  "                                               1920x1080 or 1920x1080-60\n"
-                 "-l | --log           enable more ffmpeg demux log.\n"
+                 "-l | --log           enable more log bit 0: ffmpeg demux bit 1/2/3: avsync.\n"
                  "-s | --secure        secure video path.\n"
                  "",
                  argv[0]);
 }
 
-static const char short_options[] = "d:hf:p:m:ls";
+static const char short_options[] = "d:hf:p:m:l:s";
 
 static const struct option
 long_options[] = {
@@ -63,7 +63,7 @@ long_options[] = {
         { "help",   no_argument,       NULL, 'h' },
         { "plane",  required_argument, NULL, 'p' },
         { "mode", required_argument, NULL, 'm' },
-        { "log",  no_argument, NULL, 'l' },
+        { "log",  required_argument, NULL, 'l' },
         { "secure",  no_argument, NULL, 's' },
         { 0, 0, 0, 0 }
 };
@@ -103,7 +103,7 @@ static int parse_para(int argc, char *argv[])
                 break;
 
             case 'l':
-                ffmpeg_log = 1;
+                log_level = atoi(optarg);
                 break;
 
             case 'd':

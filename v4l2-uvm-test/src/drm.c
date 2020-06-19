@@ -28,6 +28,8 @@
 #include <linux/videodev2.h>
 #include <meson_drm.h>
 
+#include "aml_avsync.h"
+#include "aml_avsync_log.h"
 #include "drm.h"
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #define MAX_BUF_SIZE 32
@@ -40,6 +42,7 @@ static int secure_mode;
 extern unsigned int global_plane_id;
 extern char mode_str[16];
 extern unsigned int vfresh;
+extern int log_level;
 
 struct gem_buffer {
     uint32_t width;
@@ -69,7 +72,6 @@ struct display_properties_ids {
     uint32_t plane_crtc_w;
     uint32_t plane_crtc_h;
     uint32_t plane_zpos;
-    uint32_t out_fence_ptr;
 };
 
 struct plane {
@@ -114,17 +116,25 @@ struct display_setup {
 struct aml_display {
     bool started;
     pthread_t disp_t;
+#if 0
     unsigned int q_len;
     unsigned int ri; //read index
     unsigned int wi; //write index
     unsigned int total_num;
     struct drm_frame *queue;
+#endif
+    void * avsync;
+    bool last_frame;
 };
 
 static struct gem_buffer *gem_buf;
 static struct gem_buffer osd_gem_buf;
 static displayed_cb_func display_cb;
 static struct aml_display aml_dis;
+
+#define TSYNC_MODE   "/sys/class/tsync/mode"
+#define TSYNC_PCRSCR "/sys/class/tsync/pts_pcrscr"
+#define VPTS_INC_UPINT "/sys/class/video/vsync_pts_inc_upint"
 
 static int create_meson_gem_buffer(int fd, enum frame_format fmt,
         struct gem_buffer *buffer)
@@ -264,7 +274,6 @@ static int add_framebuffer(int fd, struct gem_buffer *buffer,
 static int discover_properties(int fd, struct display_properties_ids *ids)
 {
     //int connector_id = setup.connector_id;
-    int crtc_id = setup.crtc_id;
     int plane_id = setup.plane_id;
     drmModeObjectPropertiesPtr properties = NULL;
     drmModePropertyPtr property = NULL;
@@ -284,7 +293,6 @@ static int discover_properties(int fd, struct display_properties_ids *ids)
         { DRM_MODE_OBJECT_PLANE, plane_id, "CRTC_Y", &ids->plane_crtc_y },
         { DRM_MODE_OBJECT_PLANE, plane_id, "CRTC_W", &ids->plane_crtc_w },
         { DRM_MODE_OBJECT_PLANE, plane_id, "CRTC_H", &ids->plane_crtc_h },
-        { DRM_MODE_OBJECT_CRTC, crtc_id, "OUT_FENCE_PTR", &ids->out_fence_ptr},
     };
     unsigned int i, j;
     int rc;
@@ -406,7 +414,7 @@ static int page_flip(int fd, unsigned int crtc_id, unsigned int plane_id,
     drmModeAtomicReqPtr request;
     uint32_t flags = DRM_MODE_ATOMIC_NONBLOCK;
     int rc;
-    int out_fence_fd = 0;
+    //int out_fence_fd = 0;
     //struct timeval t1, t2;
 
     request = drmModeAtomicAlloc();
@@ -450,7 +458,6 @@ static int page_flip(int fd, unsigned int crtc_id, unsigned int plane_id,
             gem_buf->framebuffer_id);
     drmModeAtomicAddProperty(request, plane_id, ids->plane_crtc_id,
             crtc_id);
-    drmModeAtomicAddProperty(request, crtc_id, ids->out_fence_ptr, (unsigned long)&out_fence_fd);
 
     rc = drmModeAtomicCommit(fd, request, flags, NULL);
     if (rc < 0) {
@@ -458,15 +465,6 @@ static int page_flip(int fd, unsigned int crtc_id, unsigned int plane_id,
         goto error;
     }
 
-    //gettimeofday(&t1, NULL);
-    rc = sync_wait(out_fence_fd, 50);
-    if (rc < 0)
-        printf("wait out fence fail %d, %s\n", rc, strerror(errno));
-    else {
-        //gettimeofday(&t2, NULL);
-        //printf("%s %d span:%d\n", __func__, __LINE__, span(&t1, &t2));
-    }
-    close(out_fence_fd);
     rc = 0;
     goto complete;
 
@@ -683,8 +681,9 @@ int config_sys_node(const char* path, const char* value)
         printf("fail to open %s\n", path);
         return -1;
     }
-    if (write(fd, value, strlen(value)) != 1) {
+    if (write(fd, value, strlen(value)) != strlen(value)) {
         printf("fail to write %s to %s\n", value, path);
+        close(fd);
         return -1;
     }
     close(fd);
@@ -695,8 +694,8 @@ int config_sys_node(const char* path, const char* value)
 int display_engine_start(int smode)
 {
     unsigned int plane_id;
-    drmModeModeInfo mode;
     int rc;
+    drmModeModeInfo mode;
 
     secure_mode = smode;
 
@@ -811,6 +810,18 @@ int display_engine_start(int smode)
         printf("drmModeSetCrtc fail %d\n", rc);
         return -1;
     }
+
+    /* video master mode for testing */
+    config_sys_node(TSYNC_MODE, "0");
+    config_sys_node(TSYNC_PCRSCR, "0");
+    config_sys_node(VPTS_INC_UPINT, "1");
+
+    log_set_level((log_level >> 1) & 0x7);
+    aml_dis.avsync = av_sync_create(0, 2, 2, 90000/mode.vrefresh);
+    if (!aml_dis.avsync) {
+        printf("create avsync fails\n");
+        return -1;
+    }
     return 0;
 }
 
@@ -890,9 +901,13 @@ int display_engine_stop()
     aml_dis.started = false;
     pthread_join(aml_dis.disp_t, NULL);
     close_buffer(drm_cli_fd, &osd_gem_buf);
+    if (aml_dis.avsync)
+        av_sync_destroy(aml_dis.avsync);
 
+#if 0
     if (aml_dis.queue)
         free(aml_dis.queue);
+#endif
     if (gem_buf)
         free(gem_buf);
     if (setup.plane) {
@@ -918,6 +933,7 @@ int display_engine_stop()
     return 0;
 }
 
+#if 0
 static int queue_frame(struct drm_frame* frame)
 {
     if (aml_dis.total_num == aml_dis.q_len)
@@ -945,50 +961,82 @@ static int dequeue_frame(struct drm_frame* frame)
 
     return 0;
 }
+#endif
 
 static void * display_thread_func(void * arg)
 {
-    struct drm_frame f, f_p1, f_p2;
-    unsigned int fence_num;
+    struct vframe *sync_frame;
+    struct drm_frame *f = NULL, *f_p1 = NULL, *f_p2 = NULL;
+    drmVBlank vbl;
 
-    f.pri_dec = NULL;
-    f_p1.pri_dec = NULL;
-    f_p2.pri_dec = NULL;
+    memset(&vbl, 0, sizeof(drmVBlank));
 
     while (aml_dis.started) {
         int rc;
         struct gem_buffer* gem_buf;
 
-        rc = dequeue_frame(&f);
-        if (rc) {
-            usleep(10);
-            continue;
-        }
-        gem_buf = f.gem;
+        vbl.request.type = DRM_VBLANK_RELATIVE;
+        vbl.request.sequence = 1;
+        vbl.request.signal = 0;
 
-        rc = page_flip(drm_fd, setup.crtc_id, setup.plane_id,
-                &setup.properties_ids, gem_buf);
+        rc = drmWaitVBlank(drm_fd, &vbl);
         if (rc) {
-            printf("page_flip error\n");
-            continue;
-        }
-        fence_num++;
-        /* 2 fence delay on video layer, 1 fence delay on osd */
-        if (f_p2.pri_dec) {
-            display_cb(f_p2.pri_dec);
+            printf("drmWaitVBlank error %d\n", rc);
+            return NULL;
         }
 
-        f_p2 = f_p1;
-        f_p1 = f;
+        sync_frame = av_sync_pop_frame(aml_dis.avsync);
+        if (!sync_frame)
+            continue;
+
+        f = sync_frame->private;
+
+        if (!f) {
+            aml_dis.last_frame = true;
+            break;
+        }
+
+        log_debug("pop frame: %d", f->pts);
+        if (f != f_p1) {
+            gem_buf = f->gem;
+            rc = page_flip(drm_fd, setup.crtc_id, setup.plane_id,
+                    &setup.properties_ids, gem_buf);
+            if (rc) {
+                printf("page_flip error\n");
+                continue;
+            }
+            /* 2 fence delay on video layer, 1 fence delay on osd */
+            if (f_p2) {
+                display_cb(f_p2->pri_dec);
+                free(f_p2->pri_sync);
+            }
+
+            f_p2 = f_p1;
+            f_p1 = f;
+        }
     }
+    printf("quit %s\n", __func__);
     return NULL;
+}
+
+static void sync_frame_free(struct vframe * sync_frame)
+{
+    struct drm_frame* drm_f = sync_frame->private;
+
+    if (drm_f) {
+        display_cb(drm_f->pri_dec);
+        free(sync_frame);
+    } else
+        aml_dis.last_frame = true;
 }
 
 int display_engine_show(struct drm_frame* frame)
 {
     int rc;
+    struct vframe* sync_frame;
 
     if (!aml_dis.started) {
+#if 0
         aml_dis.queue = (struct drm_frame*)calloc(MAX_BUF_SIZE, sizeof(*aml_dis.queue));
         if (!aml_dis.queue) {
             printf("%s OOM\n", __func__);
@@ -996,7 +1044,9 @@ int display_engine_show(struct drm_frame* frame)
         }
         aml_dis.q_len = MAX_BUF_SIZE;
         aml_dis.ri = aml_dis.wi = aml_dis.total_num = 0;
+#endif
         aml_dis.started = true;
+        aml_dis.last_frame = false;
 
         rc = pthread_create(&aml_dis.disp_t, NULL, display_thread_func, NULL);
         if (rc) {
@@ -1005,13 +1055,27 @@ int display_engine_show(struct drm_frame* frame)
         }
     }
 
+    sync_frame = calloc(1, sizeof(*sync_frame));
+    if (!sync_frame) {
+        printf("%s OOM\n", __func__);
+        return -1;
+    }
+    if (!frame->last_flag) {
+        sync_frame->private = frame;
+        sync_frame->pts = frame->pts;
+        frame->pri_sync = sync_frame;
+        //TODO: fill correct duration
+    }
+    sync_frame->duration = 0;
+    sync_frame->free = sync_frame_free;
     while (aml_dis.started) {
-        if (queue_frame(frame)) {
-            usleep(10);
+        if (av_sync_push_frame(aml_dis.avsync, sync_frame)) {
+            usleep(1000);
             continue;
         } else
             break;
     }
+    //printf("push frame: %d\n", sync_frame->pts);
 
     return 0;
 }
@@ -1024,7 +1088,7 @@ int display_engine_register_cb(displayed_cb_func cb)
 
 int display_wait_for_display()
 {
-    while (aml_dis.started && aml_dis.total_num) {
+    while (aml_dis.started && !aml_dis.last_frame) {
         usleep(10);
     }
     if (!aml_dis.started)

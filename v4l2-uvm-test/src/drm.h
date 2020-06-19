@@ -25,6 +25,9 @@ struct drm_frame {
     void* gem;
     void* pri_dec;
     drm_frame_destroy destroy;
+    uint32_t pts;
+    bool last_flag;
+    void* pri_sync;
 };
 
 typedef int (*displayed_cb_func)(void* handle);

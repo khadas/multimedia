@@ -21,6 +21,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <libavformat/avformat.h>
 
 #include "aml_driver.h"
 #include "demux.h"
@@ -547,6 +548,10 @@ static void *dec_thread_func(void * arg) {
                 }
                 if (!(buf.flags & V4L2_BUF_FLAG_LAST)) {
                     struct drm_frame *drm_f = capture_p.buf[buf.index]->drm_frame;
+                    uint64_t pts_us;
+
+                    AVRational us_r = {1,DMX_SECOND};
+                    AVRational ninty_k_r = {1,90000};
                     /* display capture buf */
                     if (res_profile.res_change) {
                         res_profile.res_change = false;
@@ -557,6 +562,10 @@ static void *dec_thread_func(void * arg) {
                                 span(&res_profile.last_flag, &res_profile.first_frame));
                     }
                     drm_f->pri_dec =  capture_p.buf[buf.index];
+                    pts_us = buf.timestamp.tv_sec * DMX_SECOND;
+                    pts_us += buf.timestamp.tv_usec;
+                    drm_f->pts = av_rescale_q(pts_us, us_r, ninty_k_r);
+                    drm_f->last_flag = false;
                     display_engine_show(drm_f);
                 } else {
                     uint32_t evt = 0;
@@ -574,6 +583,12 @@ static void *dec_thread_func(void * arg) {
                         d_c_rec_num++;
                         continue;
                     } else if (evt == V4L2_EVENT_EOS || eos_evt_pending) {
+                        struct drm_frame *drm_f = capture_p.buf[buf.index]->drm_frame;
+
+                        /* flush DRM */
+                        drm_f->last_flag = true;
+                        display_engine_show(drm_f);
+
                         printf("EOS received\n");
                         eos_received = true;
                         eos_evt_pending = false;

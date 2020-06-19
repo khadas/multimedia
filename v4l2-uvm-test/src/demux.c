@@ -19,7 +19,7 @@
 #define HEVC_NAL_SPS 33
 #define HEVC_NAL_PPS 34
 
-extern int ffmpeg_log;
+extern int log_level;
 /* ffmpeg data structure */
 static AVStream *video_stream = NULL;
 static AVFormatContext *fmt_ctx = NULL;
@@ -37,6 +37,7 @@ static pthread_t dmx_t;
 static int thread_quit;
 static struct dmx_v_data v_data;
 static int video_frame_count = 0;
+static int64_t fake_pts = 0;
 
 static void dump(const char* path, uint8_t *data, int size) {
     FILE* fd = fopen(path, "wb");
@@ -82,13 +83,18 @@ static int demux_packet(AVPacket* pkt)
     if (pkt->stream_index != video_stream_idx)
         return decoded;
 
-    if (pkt->pts != AV_NOPTS_VALUE)
+    if (pkt->pts != AV_NOPTS_VALUE) {
         pts_us = av_rescale_q(pkt->pts, video_stream->time_base, ns_r);
+        fake_pts = pts_us;
+    } else {
+        pts_us = fake_pts + av_rescale_q(pkt->duration, video_stream->time_base, ns_r);
+        fake_pts = pts_us;
+    }
 
     /* video frame */
     video_frame_count++;
 #ifdef DEBUG_FRAME
-    printf("video_frame n:%d pts:%llx size:%x\n",
+    printf("video_frame n:%d pts:%lld size:%x\n",
             video_frame_count,
             pts_us, pkt->size);
 #endif
@@ -393,7 +399,7 @@ static void* dmx_thread_func (void *arg) {
 static void log_callback(void *ptr, int level,
         const char *fmt, va_list vargs)
 {
-    if (ffmpeg_log)
+    if (log_level & 0x1)
         vprintf(fmt, vargs);
 }
 

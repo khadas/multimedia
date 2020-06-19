@@ -8,7 +8,7 @@ TARGET = v4l2-uvm-test
 all: $(TARGET)
 
 #TARGET_CFLAGS += -DDEBUG_FRAME
-LD_FLAG = -ldrm -lavformat -lavcodec -lavutil -lm -lpthread -lz -lswresample
+LD_FLAG = -ldrm -lavformat -lavcodec -lavutil -lm -lpthread -lz -lswresample -lamlavsync
 
 ifeq ($(SECMEM), 1)
 OBJ += secmem.c
@@ -18,7 +18,7 @@ endif
 
 
 $(TARGET): $(OBJ)
-	$(CC) $(TARGET_CFLAGS)  -D_FILE_OFFSET_BITS=64 -Wall -I$(STAGING_DIR)/usr/include/ -I$(STAGING_DIR)/usr/include/libdrm/ -L$(STAGING_DIR)/usr/lib $(LD_FLAG) $(OBJ) -o $@
+	$(CC) $(TARGET_CFLAGS)  -g -D_FILE_OFFSET_BITS=64 -Wall -I$(STAGING_DIR)/usr/include/ -I$(STAGING_DIR)/usr/include/libdrm/ -L$(STAGING_DIR)/usr/lib $(LD_FLAG) $(OBJ) -o $@
 
 .PHONY: clean
 
