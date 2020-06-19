@@ -15,6 +15,12 @@
 #include <stdint.h>
 #include <time.h>
 
+enum sync_mode {
+    AV_SYNC_MODE_AMASTER = 0,
+    AV_SYNC_MODE_VMASTER = 1,
+    AV_SYNC_MODE_PCR_MASTER = 2,
+};
+
 typedef uint32_t pts90K;
 struct vframe;
 typedef void (*free_frame)(struct vframe * frame);
@@ -44,6 +50,7 @@ struct vframe {
  * Params:
  *   @session_id: unique AV sync session ID to bind audio and video
  *               usually get from kernel driver.
+ *   @mode: AV sync mode of enum sync_mode
  *   @start_thres: The start threshold of AV sync module. Set it to 0 for
  *               a default value. For low latency mode, set it to 1. Bigger
  *               value will increase the delay of the first frame shown.
@@ -55,7 +62,11 @@ struct vframe {
  * Return:
  *   null for failure, or handle for avsync module.
  */
-void* av_sync_create(int session_id, int start_thres, int delay, pts90K vsync_interval);
+void* av_sync_create(int session_id,
+                     enum sync_mode mode,
+                     int start_thres,
+                     int delay,
+                     pts90K vsync_interval);
 
 void av_sync_destroy(void *sync);
 

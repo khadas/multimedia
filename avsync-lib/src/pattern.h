@@ -16,7 +16,6 @@ enum frame_pattern {
     AV_SYNC_FRAME_P32 = 0,
     AV_SYNC_FRAME_P22 = 1,
     AV_SYNC_FRAME_P41 = 2,
-    AV_SYNC_FRAME_P11 = 3,
     AV_SYNC_FRAME_PMAX,
 };
 

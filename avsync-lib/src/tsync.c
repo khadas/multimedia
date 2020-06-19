@@ -16,11 +16,18 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include "tsync.h"
 
+#define VIDEO_DEVICE "/dev/amvideo"
 #define TSYNC_ENABLE "/sys/class/tsync/enable"
 #define TSYNC_PCRSCR "/sys/class/tsync/pts_pcrscr"
 #define TSYNC_EVENT  "/sys/class/tsync/event"
+#define TSYNC_MODE   "/sys/class/tsync/mode"
+
+#define _A_M 'S'
+#define AMSTREAM_IOC_SET_VSYNC_UPINT _IOW((_A_M), 0x89, int)
+#define AMSTREAM_IOC_SET_VIDEOPEEK   _IOW(_A_M, 0xbf, unsigned int)
 
 static int config_sys_node(const char* path, const char* value)
 {
@@ -64,7 +71,7 @@ static int get_sysfs_uint32(const char *path, uint32_t *value)
     return 0;
 }
 
-void tsync_enable(int session, bool enable)
+int tsync_enable(int session, bool enable)
 {
     const char *val;
 
@@ -72,7 +79,7 @@ void tsync_enable(int session, bool enable)
         val = "1";
     else
         val = "0";
-    config_sys_node(TSYNC_ENABLE, val);
+    return config_sys_node(TSYNC_ENABLE, val);
 }
 
 uint32_t tsync_get_pcr(int session)
@@ -110,4 +117,51 @@ int tsync_send_video_disc(int session, uint32_t vpts)
 
     snprintf(val, sizeof(val), "VIDEO_TSTAMP_DISCONTINUITY:0x%x", vpts);
     return config_sys_node(TSYNC_EVENT, val);
+}
+
+int tsync_set_pcr(int session, uint32_t pcr)
+{
+    char val[20];
+
+    snprintf(val, sizeof(val), "%u", pcr);
+    config_sys_node(TSYNC_PCRSCR, val);
+    return 0;
+}
+
+static int video_device_ioctl(int ctl, int value)
+{
+    int video_fd;
+
+    video_fd = open(VIDEO_DEVICE, O_RDWR);
+    if (video_fd < 0) {
+        return -1;
+    }
+
+    ioctl(video_fd, ctl, &value);
+
+    close(video_fd);
+
+    return 0;
+}
+
+int tsync_set_pts_inc_mode(int session, bool enable)
+{
+    return video_device_ioctl(AMSTREAM_IOC_SET_VSYNC_UPINT, enable);
+}
+
+int tsync_set_mode(int session, enum sync_mode mode)
+{
+    const char* val = NULL;
+    if (mode == AV_SYNC_MODE_VMASTER)
+        val = "0";
+    else if (mode == AV_SYNC_MODE_AMASTER)
+        val = "1";
+    else if (mode == AV_SYNC_MODE_PCR_MASTER)
+        val = "2";
+    return config_sys_node(TSYNC_MODE, val);
+}
+
+int tsync_set_video_peek_mode(int session)
+{
+    return video_device_ioctl(AMSTREAM_IOC_SET_VIDEOPEEK, 0);
 }

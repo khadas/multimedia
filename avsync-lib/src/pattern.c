@@ -137,7 +137,7 @@ void correct_pattern(void* handle, struct vframe *frame, struct vframe *nextfram
             if (((int)(systime + (expected_prev_interval + 1) *
                         vsync_interval - npts) >= 0)) {
                 *expire = false;
-                log_info("hold frame for pattern: %d", pd->detected);
+                log_debug("hold frame for pattern: %d", pd->detected);
             }
 
 #if 0 // Frame scattering is the right place to adjust the hold time.
@@ -162,7 +162,7 @@ void correct_pattern(void* handle, struct vframe *frame, struct vframe *nextfram
                     ((int)(systime + vsync_interval * (expected_prev_interval - 1) - npts) < 0) &&
                     ((int)(systime + expected_prev_interval * vsync_interval - npts) >= 0)) {
                 *expire = true;
-                log_info("pull frame for pattern: %d", pd->detected);
+                log_debug("squeeze frame for pattern: %d", pd->detected);
             }
         }
     }

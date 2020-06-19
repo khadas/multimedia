@@ -132,10 +132,6 @@ static struct gem_buffer osd_gem_buf;
 static displayed_cb_func display_cb;
 static struct aml_display aml_dis;
 
-#define TSYNC_MODE   "/sys/class/tsync/mode"
-#define TSYNC_PCRSCR "/sys/class/tsync/pts_pcrscr"
-#define VPTS_INC_UPINT "/sys/class/video/vsync_pts_inc_upint"
-
 static int create_meson_gem_buffer(int fd, enum frame_format fmt,
         struct gem_buffer *buffer)
 {
@@ -811,13 +807,8 @@ int display_engine_start(int smode)
         return -1;
     }
 
-    /* video master mode for testing */
-    config_sys_node(TSYNC_MODE, "0");
-    config_sys_node(TSYNC_PCRSCR, "0");
-    config_sys_node(VPTS_INC_UPINT, "1");
-
     log_set_level((log_level >> 1) & 0x7);
-    aml_dis.avsync = av_sync_create(0, 2, 2, 90000/mode.vrefresh);
+    aml_dis.avsync = av_sync_create(0, AV_SYNC_MODE_VMASTER, 2, 2, 90000/mode.vrefresh);
     if (!aml_dis.avsync) {
         printf("create avsync fails\n");
         return -1;
@@ -966,7 +957,7 @@ static int dequeue_frame(struct drm_frame* frame)
 static void * display_thread_func(void * arg)
 {
     struct vframe *sync_frame;
-    struct drm_frame *f = NULL, *f_p1 = NULL, *f_p2 = NULL;
+    struct drm_frame *f = NULL, *f_p1 = NULL, *f_p2 = NULL, *f_p3 = NULL;
     drmVBlank vbl;
 
     memset(&vbl, 0, sizeof(drmVBlank));
@@ -996,7 +987,7 @@ static void * display_thread_func(void * arg)
             break;
         }
 
-        log_debug("pop frame: %d", f->pts);
+        log_debug("pop frame: %u", f->pts);
         if (f != f_p1) {
             gem_buf = f->gem;
             rc = page_flip(drm_fd, setup.crtc_id, setup.plane_id,
@@ -1006,11 +997,12 @@ static void * display_thread_func(void * arg)
                 continue;
             }
             /* 2 fence delay on video layer, 1 fence delay on osd */
-            if (f_p2) {
-                display_cb(f_p2->pri_dec);
-                free(f_p2->pri_sync);
+            if (f_p3) {
+                display_cb(f_p3->pri_dec);
+                free(f_p3->pri_sync);
             }
 
+            f_p3 = f_p2;
             f_p2 = f_p1;
             f_p1 = f;
         }
@@ -1075,7 +1067,7 @@ int display_engine_show(struct drm_frame* frame)
         } else
             break;
     }
-    //printf("push frame: %d\n", sync_frame->pts);
+    log_debug("push frame: %u", sync_frame->pts);
 
     return 0;
 }

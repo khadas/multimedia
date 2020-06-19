@@ -21,10 +21,6 @@
 #include "aml_avsync.h"
 #include "aml_avsync_log.h"
 
-#define TSYNC_MODE   "/sys/class/tsync/mode"
-#define TSYNC_PCRSCR "/sys/class/tsync/pts_pcrscr"
-#define VPTS_INC_UPINT "/sys/class/video/vsync_pts_inc_upint"
-
 #define FRAME_NUM 32
 #define PATTERN_32_DURATION 3750
 #define PATTERN_22_DURATION 3000
@@ -32,6 +28,7 @@
 static struct vframe frame[FRAME_NUM];
 static int frame_received;
 
+#if 0
 static int sysfs_set_sysfs_str(const char *path, const char *val)
 {
     int fd;
@@ -46,6 +43,7 @@ static int sysfs_set_sysfs_str(const char *path, const char *val)
     }
     return -1;
 }
+#endif
 
 static void frame_free(struct vframe * frame)
 {
@@ -60,12 +58,7 @@ static void test(int refresh_rate, int pts_interval, struct vframe* frame)
     int sleep_us = 1000000/refresh_rate;
     struct vframe *last_frame = NULL, *pop_frame;
 
-    /* vmaster and reset pcr to 0 */
-    sysfs_set_sysfs_str(TSYNC_MODE, "0");
-    sysfs_set_sysfs_str(TSYNC_PCRSCR, "0");
-    sysfs_set_sysfs_str(VPTS_INC_UPINT, "1");
-
-    handle = av_sync_create(0, 2, 2, 90000/refresh_rate);
+    handle = av_sync_create(0, AV_SYNC_MODE_VMASTER, 2, 2, 90000/refresh_rate);
     frame = (struct vframe*)calloc(FRAME_NUM, sizeof(*frame));
     if (!frame) {
         log_error("oom");

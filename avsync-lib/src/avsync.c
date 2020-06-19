@@ -18,12 +18,6 @@
 #include "tsync.h"
 #include "aml_avsync_log.h"
 
-enum sync_mode {
-    AV_SYNC_MODE_AMASTER = 0,
-    AV_SYNC_MODE_VMASTER = 1,
-    AV_SYNC_MODE_PCR_MASTER = 2,
-};
-
 enum sync_state {
     AV_SYNC_STAT_INIT = 0,
     AV_SYNC_STAT_RUNNING = 1,
@@ -83,7 +77,9 @@ static void pattern_detect(struct av_sync_session* avsync,
         int cur_period,
         int last_period);
 
-void* av_sync_create(int session_id, int start_thres,
+void* av_sync_create(int session_id,
+        enum sync_mode mode,
+        int start_thres,
         int delay, pts90K vsync_interval)
 {
     struct av_sync_session *avsync = NULL;
@@ -117,7 +113,7 @@ void* av_sync_create(int session_id, int start_thres,
     avsync->paused = false;
     avsync->phase_set = false;
     avsync->session_id = session_id;
-    avsync->mode = AV_SYNC_MODE_AMASTER;
+    avsync->mode = mode;
     avsync->last_frame = NULL;
     avsync->tsync_started = false;
     if (!start_thres)
@@ -137,8 +133,8 @@ void* av_sync_create(int session_id, int start_thres,
     //TODO: connect kernel session
 
     pthread_mutex_init(&avsync->lock, NULL);
-    log_info("start_thres: %d delay: %d interval: %d done\n",
-            start_thres, delay, vsync_interval);
+    log_info("mode: %d start_thres: %d delay: %d interval: %d done\n",
+            mode, start_thres, delay, vsync_interval);
     return avsync;
 }
 
@@ -175,6 +171,7 @@ void av_sync_destroy(void *sync)
 
     /* all frames are freed */
     //TODO: disconnect kernel session
+    tsync_set_pts_inc_mode(avsync->session_id, false);
     tsync_enable(avsync->session_id, false);
     pthread_mutex_destroy(&avsync->lock);
     destroy_q(avsync->frame_q);
@@ -223,7 +220,7 @@ struct vframe *av_sync_pop_frame(void *sync)
     struct vframe *frame = NULL;
     struct av_sync_session *avsync = (struct av_sync_session *)sync;
     int toggle_cnt = 0;
-    uint32_t systime = tsync_get_pcr(avsync->session_id);
+    uint32_t systime;
 
     pthread_mutex_lock(&avsync->lock);
     if (avsync->state == AV_SYNC_STAT_INIT)
@@ -235,21 +232,44 @@ struct vframe *av_sync_pop_frame(void *sync)
             goto exit;
         }
 
-        tsync_enable(avsync->session_id, true);
+        if (tsync_enable(avsync->session_id, true))
+            log_error("enable tsync fail");
+        if (avsync->mode == AV_SYNC_MODE_VMASTER) {
+            if (tsync_set_mode(avsync->session_id, AV_SYNC_MODE_VMASTER))
+                log_error("set vmaster mode fail");
+            if (tsync_set_pcr(avsync->session_id, frame->pts))
+                log_error("set pcr fail");
+            log_info("update pcr to: %u", frame->pts);
+            if (tsync_set_pts_inc_mode(avsync->session_id, true))
+                log_error("set inc mode fail");
+            if (tsync_set_video_peek_mode(avsync->session_id))
+                log_error("set peek mode fail");
+        } else if (avsync->mode == AV_SYNC_MODE_AMASTER) {
+            if (tsync_set_mode(avsync->session_id, AV_SYNC_MODE_AMASTER))
+                log_error("set amaster mode fail");
+        } else {
+            //PCR master mode should be set alreay, but it won't hurt to set again.
+            if (tsync_set_mode(avsync->session_id, AV_SYNC_MODE_PCR_MASTER))
+                log_error("set pcrmaster mode fail");
+        }
+
         /* video start event */
-        tsync_send_video_start(avsync->session_id, frame->pts);
-        log_info("video start %d", frame->pts);
+        if (tsync_send_video_start(avsync->session_id, frame->pts))
+            log_error("send video start fail");
+        else
+            log_info("video start %u", frame->pts);
         avsync->tsync_started = true;
     }
 
+    systime = tsync_get_pcr(avsync->session_id);
     while (!peek_item(avsync->frame_q, (void **)&frame, 0)) {
         struct vframe *next_frame = NULL;
 
         peek_item(avsync->frame_q, (void **)&next_frame, 1);
         if (next_frame)
-            log_debug("cur_f %d next_f %d", frame->pts, next_frame->pts);
+            log_debug("cur_f %u next_f %u", frame->pts, next_frame->pts);
         if (frame_expire(avsync, systime, frame, next_frame, toggle_cnt)) {
-            log_debug("cur_f %d expire", frame->pts);
+            log_debug("cur_f %u expire", frame->pts);
             toggle_cnt++;
 
             pattern_detect(avsync,
@@ -265,7 +285,7 @@ struct vframe *av_sync_pop_frame(void *sync)
                     avsync->last_frame->free(avsync->last_frame);
             } else {
                 avsync->first_frame_toggled = true;
-                log_info("first frame %d", frame->pts);
+                log_info("first frame %u", frame->pts);
             }
             avsync->last_frame = frame;
         } else
@@ -275,7 +295,7 @@ struct vframe *av_sync_pop_frame(void *sync)
 exit:
     pthread_mutex_unlock(&avsync->lock);
     if (avsync->last_frame)
-        log_debug("pop %d", avsync->last_frame->pts);
+        log_debug("pop %u", avsync->last_frame->pts);
     else
         log_debug("pop (nil)");
     if (avsync->last_frame)
@@ -325,7 +345,7 @@ static bool frame_expire(struct av_sync_session* avsync,
     if (avsync->phase_set)
         systime += avsync->phase;
 
-    log_trace("systime:%d phase:%d correct:%d", systime,
+    log_trace("systime:%u phase:%u correct:%u", systime,
             avsync->phase_set?avsync->phase:0, pts_correction);
     if (abs_diff(systime, fpts) > AV_DISCONTINUE_THREDHOLD_MIN &&
             avsync->first_frame_toggled) {
@@ -336,7 +356,7 @@ static bool frame_expire(struct av_sync_session* avsync,
         log_warn("sync lost systime:%x fpts:%x", systime, fpts);
         avsync->state = AV_SYNC_STAT_SYNC_LOST;
         avsync->phase_set = false;
-        if (systime > fpts) {
+        if ((int)(systime - fpts) > 0) {
             if (frame->pts)
                 tsync_send_video_disc(avsync->session_id, frame->pts);
             else if (avsync->mode != AV_SYNC_MODE_PCR_MASTER)
@@ -385,10 +405,19 @@ static bool frame_expire(struct av_sync_session* avsync,
         avsync->vpts = fpts;
         /* phase adjustment */
         if (!avsync->phase_set) {
+            uint32_t phase_thres = avsync->vsync_interval / 4;
             //systime = tsync_get_pcr(avsync->session_id);
-            if ( systime > fpts && (systime - fpts) < avsync->vsync_interval / 4) {
-                /* too aligned, separate them to 1/4 VSYNC */
-                avsync->phase += avsync->vsync_interval / 4 - (systime - fpts);
+            if ( systime > fpts && (systime - fpts) < phase_thres) {
+                /* too aligned to current VSYNC, separate them to 1/4 VSYNC */
+                avsync->phase += phase_thres - (systime - fpts);
+                avsync->phase_set = true;
+                log_info("adjust phase to %d", avsync->phase);
+            }
+            if (!avsync->phase_set && systime > fpts &&
+                systime < (fpts + avsync->vsync_interval) &&
+                (systime - fpts) > avsync->vsync_interval - phase_thres) {
+                /* too aligned to previous VSYNC, separate them to 1/4 VSYNC */
+                avsync->phase += phase_thres + fpts + avsync->vsync_interval - systime;
                 avsync->phase_set = true;
                 log_info("adjust phase to %d", avsync->phase);
             }
@@ -404,5 +433,4 @@ static void pattern_detect(struct av_sync_session* avsync, int cur_period, int l
     detect_pattern(avsync->pattern_detector, AV_SYNC_FRAME_P32, cur_period, last_period);
     detect_pattern(avsync->pattern_detector, AV_SYNC_FRAME_P22, cur_period, last_period);
     detect_pattern(avsync->pattern_detector, AV_SYNC_FRAME_P41, cur_period, last_period);
-    //TODO: add 11 support
 }
