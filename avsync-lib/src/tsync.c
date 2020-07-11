@@ -18,6 +18,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include "tsync.h"
+#include "aml_avsync_log.h"
 
 #define VIDEO_DEVICE "/dev/amvideo"
 #define TSYNC_ENABLE "/sys/class/tsync/enable"
@@ -34,11 +35,11 @@ static int config_sys_node(const char* path, const char* value)
     int fd;
     fd = open(path, O_RDWR);
     if (fd < 0) {
-        printf("fail to open %s\n", path);
+        log_error("fail to open %s\n", path);
         return -1;
     }
     if (write(fd, value, strlen(value)) != strlen(value)) {
-        printf("fail to write %s to %s\n", value, path);
+        log_error("fail to write %s to %s\n", value, path);
         close(fd);
         return -1;
     }
@@ -60,11 +61,11 @@ static int get_sysfs_uint32(const char *path, uint32_t *value)
         valstr[strlen(valstr)] = '\0';
         close(fd);
     } else {
-        printf("unable to open file %s\n", path);
+        log_error("unable to open file %s\n", path);
         return -1;
     }
     if (sscanf(valstr, "0x%x", &val) < 1) {
-        printf("unable to get pts from: %s", valstr);
+        log_error("unable to get pts from: %s", valstr);
         return -1;
     }
     *value = val;
@@ -79,6 +80,7 @@ int tsync_enable(int session, bool enable)
         val = "1";
     else
         val = "0";
+    log_info("%s", val);
     return config_sys_node(TSYNC_ENABLE, val);
 }
 
@@ -97,6 +99,7 @@ int tsync_send_video_start(int session, uint32_t vpts)
     char val[50];
 
     snprintf(val, sizeof(val), "VIDEO_START:0x%x", vpts);
+    log_info("%s", val);
     return config_sys_node(TSYNC_EVENT, val);
 }
 
@@ -108,6 +111,7 @@ int tsync_send_video_pause(int session, bool pause)
         val = "VIDEO_PAUSE:0x1";
     else
         val = "VIDEO_PAUSE:0x0";
+    log_info("%s", val);
     return config_sys_node(TSYNC_EVENT, val);
 }
 
@@ -116,6 +120,7 @@ int tsync_send_video_disc(int session, uint32_t vpts)
     char val[50];
 
     snprintf(val, sizeof(val), "VIDEO_TSTAMP_DISCONTINUITY:0x%x", vpts);
+    log_info("%s", val);
     return config_sys_node(TSYNC_EVENT, val);
 }
 
@@ -137,7 +142,7 @@ static int video_device_ioctl(int ctl, int value)
         return -1;
     }
 
-    ioctl(video_fd, ctl, &value);
+    ioctl(video_fd, ctl, value);
 
     close(video_fd);
 

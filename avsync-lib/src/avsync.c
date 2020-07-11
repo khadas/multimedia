@@ -92,7 +92,7 @@ void* av_sync_create(int session_id,
         log_error("invalid delay: %d\n", delay);
         return NULL;
     }
-    if (vsync_interval < 750 || vsync_interval >= 3750) {
+    if (vsync_interval < 750 || vsync_interval > 3750) {
         log_error("invalid vsync interval: %d", vsync_interval);
         return NULL;
     }
@@ -131,6 +131,9 @@ void* av_sync_create(int session_id,
         return NULL;
     }
     //TODO: connect kernel session
+
+    /* just in case sysnode is wrongly set */
+    tsync_send_video_pause(avsync->session_id, false);
 
     pthread_mutex_init(&avsync->lock, NULL);
     log_info("mode: %d start_thres: %d delay: %d interval: %d done\n",
@@ -188,7 +191,10 @@ int av_sync_pause(void *sync, bool pause)
         return -1;
 
     avsync->paused = pause;
-    tsync_send_video_pause(avsync->session_id, pause);
+
+    if (avsync->mode == AV_SYNC_MODE_VMASTER)
+        tsync_send_video_pause(avsync->session_id, pause);
+
     log_info("paused:%d\n", pause);
     return 0;
 }
@@ -245,6 +251,8 @@ struct vframe *av_sync_pop_frame(void *sync)
             if (tsync_set_video_peek_mode(avsync->session_id))
                 log_error("set peek mode fail");
         } else if (avsync->mode == AV_SYNC_MODE_AMASTER) {
+            if (tsync_set_pts_inc_mode(avsync->session_id, false))
+                log_error("set inc mode fail");
             if (tsync_set_mode(avsync->session_id, AV_SYNC_MODE_AMASTER))
                 log_error("set amaster mode fail");
         } else {
@@ -370,13 +378,9 @@ static bool frame_expire(struct av_sync_session* avsync,
                 return true;
             }
         }
-    } else {
-        if (avsync->state != AV_SYNC_STAT_SYNC_SETUP)
-            log_info("sync setup");
-        avsync->state = AV_SYNC_STAT_SYNC_SETUP;
     }
 
-    expire = (systime >= fpts);
+    expire = (int)(systime - fpts) >= 0;
 
     /* scatter the frame in different vsync whenever possible */
     if (expire && next_frame && next_frame->pts && toggle_cnt) {
@@ -387,7 +391,8 @@ static bool frame_expire(struct av_sync_session* avsync,
             log_debug("unset expire systime:%d inter:%d next_pts:%d toggle_cnt:%d",
                     systime, avsync->vsync_interval, next_frame->pts, toggle_cnt);
         }
-    } else if (!expire && next_frame && next_frame->pts && !toggle_cnt) {
+    } else if (!expire && next_frame && next_frame->pts && !toggle_cnt
+               && avsync->first_frame_toggled) {
         /* next vsync will have at least 2 frame expired */
         if (systime + avsync->vsync_interval > next_frame->pts) {
             expire = true;
@@ -422,6 +427,10 @@ static bool frame_expire(struct av_sync_session* avsync,
                 log_info("adjust phase to %d", avsync->phase);
             }
         }
+
+        if (avsync->state != AV_SYNC_STAT_SYNC_SETUP)
+            log_info("sync setup");
+        avsync->state = AV_SYNC_STAT_SYNC_SETUP;
     }
 
     return expire;

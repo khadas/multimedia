@@ -16,8 +16,8 @@
 #include <time.h>
 
 enum sync_mode {
-    AV_SYNC_MODE_AMASTER = 0,
-    AV_SYNC_MODE_VMASTER = 1,
+    AV_SYNC_MODE_VMASTER = 0,
+    AV_SYNC_MODE_AMASTER = 1,
     AV_SYNC_MODE_PCR_MASTER = 2,
 };
 
