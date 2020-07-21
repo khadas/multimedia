@@ -175,7 +175,8 @@ void av_sync_destroy(void *sync)
     /* all frames are freed */
     //TODO: disconnect kernel session
     tsync_set_pts_inc_mode(avsync->session_id, false);
-    tsync_enable(avsync->session_id, false);
+    if (sync->mode == AV_SYNC_MODE_VMASTER)
+        tsync_enable(avsync->session_id, false);
     pthread_mutex_destroy(&avsync->lock);
     destroy_q(avsync->frame_q);
     destroy_pattern_detector(avsync->pattern_detector);
@@ -190,12 +191,14 @@ int av_sync_pause(void *sync, bool pause)
     if (!avsync)
         return -1;
 
-    avsync->paused = pause;
-
-    if (avsync->mode == AV_SYNC_MODE_VMASTER)
+    if (avsync->mode == AV_SYNC_MODE_VMASTER) {
         tsync_send_video_pause(avsync->session_id, pause);
+        avsync->paused = pause;
+        log_info("paused:%d\n", pause);
+    } else {
+        log_info("ignore paused:%d in mode %d", avsync->mode);
+    }
 
-    log_info("paused:%d\n", pause);
     return 0;
 }
 
@@ -229,8 +232,10 @@ struct vframe *av_sync_pop_frame(void *sync)
     uint32_t systime;
 
     pthread_mutex_lock(&avsync->lock);
-    if (avsync->state == AV_SYNC_STAT_INIT)
+    if (avsync->state == AV_SYNC_STAT_INIT) {
+        log_trace("in state INIT");
         goto exit;
+    }
 
     if (!avsync->tsync_started) {
         if (peek_item(avsync->frame_q, (void **)&frame, 0) || !frame) {
