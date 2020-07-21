@@ -175,7 +175,7 @@ void av_sync_destroy(void *sync)
     /* all frames are freed */
     //TODO: disconnect kernel session
     tsync_set_pts_inc_mode(avsync->session_id, false);
-    if (sync->mode == AV_SYNC_MODE_VMASTER)
+    if (avsync->mode == AV_SYNC_MODE_VMASTER)
         tsync_enable(avsync->session_id, false);
     pthread_mutex_destroy(&avsync->lock);
     destroy_q(avsync->frame_q);
