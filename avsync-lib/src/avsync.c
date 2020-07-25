@@ -258,6 +258,8 @@ struct vframe *av_sync_pop_frame(void *sync)
         } else if (avsync->mode == AV_SYNC_MODE_AMASTER) {
             if (tsync_set_pts_inc_mode(avsync->session_id, false))
                 log_error("set inc mode fail");
+            if (tsync_set_video_peek_mode(avsync->session_id))
+                log_error("set peek mode fail");
             if (tsync_set_mode(avsync->session_id, AV_SYNC_MODE_AMASTER))
                 log_error("set amaster mode fail");
         } else {

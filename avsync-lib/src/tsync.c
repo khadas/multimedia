@@ -166,7 +166,9 @@ int tsync_set_mode(int session, enum sync_mode mode)
     return config_sys_node(TSYNC_MODE, val);
 }
 
+/* do not send VIDEO_START from video.c */
 int tsync_set_video_peek_mode(int session)
 {
+    log_info("set video peek");
     return video_device_ioctl(AMSTREAM_IOC_SET_VIDEOPEEK, 0);
 }
