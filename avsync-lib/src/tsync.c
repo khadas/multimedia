@@ -27,6 +27,7 @@
 #define TSYNC_MODE   "/sys/class/tsync/mode"
 
 #define _A_M 'S'
+#define AMSTREAM_IOC_SYNCTHRESH _IOW((_A_M), 0x19, int)
 #define AMSTREAM_IOC_SET_VSYNC_UPINT _IOW((_A_M), 0x89, int)
 #define AMSTREAM_IOC_SET_VIDEOPEEK   _IOW(_A_M, 0xbf, unsigned int)
 
@@ -152,6 +153,11 @@ static int video_device_ioctl(int ctl, int value)
 int tsync_set_pts_inc_mode(int session, bool enable)
 {
     return video_device_ioctl(AMSTREAM_IOC_SET_VSYNC_UPINT, enable);
+}
+
+int tsync_set_video_sync_thres(int session, bool enable)
+{
+    return video_device_ioctl(AMSTREAM_IOC_SYNCTHRESH, enable);
 }
 
 int tsync_set_mode(int session, enum sync_mode mode)

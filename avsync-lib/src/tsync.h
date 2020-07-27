@@ -25,5 +25,6 @@ int tsync_send_video_disc(int session, uint32_t vpts);
 int tsync_set_pts_inc_mode(int session, bool enable);
 int tsync_set_mode(int session, enum sync_mode mode);
 int tsync_set_video_peek_mode(int session);
+int tsync_set_video_sync_thres(int session, bool enable);
 
 #endif

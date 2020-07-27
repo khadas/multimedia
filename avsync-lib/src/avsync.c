@@ -268,6 +268,8 @@ struct vframe *av_sync_pop_frame(void *sync)
                 log_error("set pcrmaster mode fail");
         }
 
+        /* video start ASAP */
+        tsync_set_video_sync_thres(avsync->session_id, false);
         /* video start event */
         if (tsync_send_video_start(avsync->session_id, frame->pts))
             log_error("send video start fail");
