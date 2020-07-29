@@ -196,7 +196,8 @@ int av_sync_pause(void *sync, bool pause)
         avsync->paused = pause;
         log_info("paused:%d\n", pause);
     } else {
-        log_info("ignore paused:%d in mode %d", avsync->mode);
+        log_info("ignore paused:%d in mode %d",
+            avsync->paused, avsync->mode);
     }
 
     return 0;
