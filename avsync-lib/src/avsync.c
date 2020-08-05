@@ -254,13 +254,9 @@ struct vframe *av_sync_pop_frame(void *sync)
             log_info("update pcr to: %u", frame->pts);
             if (tsync_set_pts_inc_mode(avsync->session_id, true))
                 log_error("set inc mode fail");
-            if (tsync_set_video_peek_mode(avsync->session_id))
-                log_error("set peek mode fail");
         } else if (avsync->mode == AV_SYNC_MODE_AMASTER) {
             if (tsync_set_pts_inc_mode(avsync->session_id, false))
                 log_error("set inc mode fail");
-            if (tsync_set_video_peek_mode(avsync->session_id))
-                log_error("set peek mode fail");
             if (tsync_set_mode(avsync->session_id, AV_SYNC_MODE_AMASTER))
                 log_error("set amaster mode fail");
         } else {
@@ -269,6 +265,8 @@ struct vframe *av_sync_pop_frame(void *sync)
                 log_error("set pcrmaster mode fail");
         }
 
+        tsync_set_video_peek_mode(avsync->session_id);
+        tsync_disable_video_stop_event(avsync->session_id, true);
         /* video start ASAP */
         tsync_set_video_sync_thres(avsync->session_id, false);
         /* video start event */
