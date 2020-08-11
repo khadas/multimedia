@@ -372,11 +372,10 @@ static bool frame_expire(struct av_sync_session* avsync,
         avsync->state = AV_SYNC_STAT_SYNC_LOST;
         avsync->phase_set = false;
         if ((int)(systime - fpts) > 0) {
-            if (frame->pts)
+            if (frame->pts && avsync->mode == AV_SYNC_MODE_VMASTER)
                 tsync_send_video_disc(avsync->session_id, frame->pts);
-            else if (avsync->mode != AV_SYNC_MODE_PCR_MASTER)
-                tsync_send_video_disc(avsync->session_id, frame->pts);
-            return false;
+            /*catch up PCR */
+            return true;
         } else if (avsync->mode == AV_SYNC_MODE_PCR_MASTER) {
             if (frame->pts)
                 tsync_send_video_disc(avsync->session_id, frame->pts);
