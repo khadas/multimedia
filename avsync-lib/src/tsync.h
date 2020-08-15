@@ -27,5 +27,6 @@ int tsync_set_mode(int session, enum sync_mode mode);
 int tsync_set_video_peek_mode(int session);
 int tsync_set_video_sync_thres(int session, bool enable);
 int tsync_disable_video_stop_event(int session, bool disable);
+int tsync_set_speed(int session, float speed);
 
 #endif
