@@ -451,3 +451,19 @@ static void pattern_detect(struct av_sync_session* avsync, int cur_period, int l
     detect_pattern(avsync->pattern_detector, AV_SYNC_FRAME_P22, cur_period, last_period);
     detect_pattern(avsync->pattern_detector, AV_SYNC_FRAME_P41, cur_period, last_period);
 }
+
+int av_sync_set_speed(void *sync, float speed)
+{
+    struct av_sync_session *avsync = (struct av_sync_session *)sync;
+
+    if (speed < 0.001f || speed > 100) {
+        log_error("wrong speed %f [0.0001, 100]", speed);
+        return -1;
+    }
+    if (avsync->mode != AV_SYNC_MODE_VMASTER) {
+        log_info("ignore set speed in mode %d", avsync->mode);
+        return 0;
+    }
+
+    return tsync_set_speed(avsync->session_id, speed);
+}

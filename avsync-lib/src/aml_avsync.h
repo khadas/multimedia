@@ -106,4 +106,15 @@ struct vframe *av_sync_pop_frame(void *sync);
  */
 void av_sync_update_vsync_interval(void *sync, pts90K vsync_interval);
 
+/* set playback speed
+ * Currently only work for VMASTER mode
+ * Params:
+ *   @speed: 1.0 is normal speed. 2.0 is 2x faster. 0.1 is 10x slower
+ *           Minimium speed is 0.001
+ *           Max speed is 100
+ * Return:
+ *   0 for OK, or error code
+ */
+int av_sync_set_speed(void *sync, float speed);
+
 #endif

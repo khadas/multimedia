@@ -31,6 +31,7 @@
 #define AMSTREAM_IOC_SET_VSYNC_UPINT _IOW((_A_M), 0x89, int)
 #define AMSTREAM_IOC_SET_VIDEOPEEK   _IOW(_A_M, 0xbf, unsigned int)
 #define AMSTREAM_IOC_SET_NO_VIDEO_STOP _IOW(_A_M, 0xf5, unsigned int)
+#define AMSTREAM_IOC_SET_VSYNC_SLOW_FACTOR _IOW((_A_M), 0x8b, int)
 
 static int config_sys_node(const char* path, const char* value)
 {
@@ -185,4 +186,9 @@ int tsync_disable_video_stop_event(int session, bool disable)
 {
     log_info("no_video_stop %d", disable);
     return video_device_ioctl(AMSTREAM_IOC_SET_NO_VIDEO_STOP, disable);
+}
+
+int tsync_set_speed(int session, float speed)
+{
+    return video_device_ioctl(AMSTREAM_IOC_SET_VSYNC_SLOW_FACTOR, 1000000 * speed);
 }
