@@ -175,8 +175,10 @@ void av_sync_destroy(void *sync)
     /* all frames are freed */
     //TODO: disconnect kernel session
     tsync_set_pts_inc_mode(avsync->session_id, false);
+#if 0 //TODO: enable after multi session driver is done
     if (avsync->mode == AV_SYNC_MODE_VMASTER)
         tsync_enable(avsync->session_id, false);
+#endif
     pthread_mutex_destroy(&avsync->lock);
     destroy_q(avsync->frame_q);
     destroy_pattern_detector(avsync->pattern_detector);
@@ -465,4 +467,24 @@ int av_sync_set_speed(void *sync, float speed)
     }
 
     return tsync_set_speed(avsync->session_id, speed);
+}
+
+int av_sync_change_mode(void *sync, enum sync_mode mode)
+{
+    struct av_sync_session *avsync = (struct av_sync_session *)sync;
+
+    if (!avsync)
+        return -1;
+    if (avsync->mode != AV_SYNC_MODE_VMASTER || mode != AV_SYNC_MODE_AMASTER) {
+        log_error("only support V to A mode switch");
+        return -1;
+    }
+
+    if (tsync_set_pts_inc_mode(avsync->session_id, false))
+        log_error("set inc mode fail");
+    if (tsync_set_mode(avsync->session_id, AV_SYNC_MODE_AMASTER))
+        log_error("set amaster mode fail");
+    avsync->mode = mode;
+    log_info("update sync mode to %d", mode);
+    return 0;
 }

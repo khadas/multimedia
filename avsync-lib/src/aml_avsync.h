@@ -117,4 +117,14 @@ void av_sync_update_vsync_interval(void *sync, pts90K vsync_interval);
  */
 int av_sync_set_speed(void *sync, float speed);
 
+/* switch avsync mode
+ * Only from Vmaster to Amaster is supported
+ * Params:
+ *   @sync: AV sync module handle
+ *   @sync_mode: new mode
+ * Return:
+ *   0 for OK, or error code
+ */
+int av_sync_change_mode(void *sync, enum sync_mode mode);
+
 #endif
