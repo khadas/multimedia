@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/time.h>
 
 #include "aml_avsync.h"
 #include "queue.h"
@@ -40,8 +41,6 @@ struct  av_sync_session {
     pts90K last_pts;
     struct vframe *last_frame;
 
-    /* monotonic system time, keep increasing during pause */
-    struct timespec system_time;
     bool  first_frame_toggled;
     /* Whether in pause state */
     bool  paused;
@@ -61,6 +60,14 @@ struct  av_sync_session {
     /* pattern */
     int last_holding_peroid;
     bool tsync_started;
+
+    float speed;
+
+    /*pip sync, remove after multi instance is supported*/
+    struct timeval base_sys_time;
+    struct timeval pause_start;
+    uint64_t pause_duration;
+    pts90K first_pts;
 };
 
 #define MAX_FRAME_NUM 32
@@ -68,11 +75,14 @@ struct  av_sync_session {
 #define TIME_UNIT90K    (90000)
 #define AV_DISCONTINUE_THREDHOLD_MIN (TIME_UNIT90K * 3)
 
+static uint64_t time_diff (struct timeval *b, struct timeval *a);
 static bool frame_expire(struct av_sync_session* avsync,
         uint32_t systime,
         struct vframe * frame,
         struct vframe * next_frame,
         int toggle_cnt);
+static bool frame_expire_pip(struct av_sync_session* avsync,
+        struct vframe * frame);
 static void pattern_detect(struct av_sync_session* avsync,
         int cur_period,
         int last_period);
@@ -96,6 +106,10 @@ void* av_sync_create(int session_id,
         log_error("invalid vsync interval: %d", vsync_interval);
         return NULL;
     }
+    if (session_id != 0 && session_id != 1) {
+        log_error("invalid session: %d", session_id);
+        return NULL;
+    }
 
     avsync = (struct av_sync_session *)calloc(1, sizeof(*avsync));
     if (!avsync) {
@@ -116,6 +130,8 @@ void* av_sync_create(int session_id,
     avsync->mode = mode;
     avsync->last_frame = NULL;
     avsync->tsync_started = false;
+    avsync->speed = 1.0f;
+
     if (!start_thres)
         avsync->start_thres = DEFAULT_START_THRESHOLD;
     else
@@ -132,12 +148,15 @@ void* av_sync_create(int session_id,
     }
     //TODO: connect kernel session
 
-    /* just in case sysnode is wrongly set */
-    tsync_send_video_pause(avsync->session_id, false);
+    if (avsync->session_id != 1) {
+        /* just in case sysnode is wrongly set */
+        tsync_send_video_pause(avsync->session_id, false);
+    } else
+        avsync->first_pts = -1;
 
     pthread_mutex_init(&avsync->lock, NULL);
-    log_info("mode: %d start_thres: %d delay: %d interval: %d done\n",
-            mode, start_thres, delay, vsync_interval);
+    log_info("mode: %d start_thres: %d delay: %d interval: %d session: %d done\n",
+            mode, start_thres, delay, vsync_interval, session_id);
     return avsync;
 }
 
@@ -173,12 +192,9 @@ void av_sync_destroy(void *sync)
         internal_stop(avsync);
 
     /* all frames are freed */
-    //TODO: disconnect kernel session
-    tsync_set_pts_inc_mode(avsync->session_id, false);
-#if 0 //TODO: enable after multi session driver is done
-    if (avsync->mode == AV_SYNC_MODE_VMASTER)
-        tsync_enable(avsync->session_id, false);
-#endif
+    if (avsync->session_id != 1)
+        tsync_set_pts_inc_mode(avsync->session_id, false);
+
     pthread_mutex_destroy(&avsync->lock);
     destroy_q(avsync->frame_q);
     destroy_pattern_detector(avsync->pattern_detector);
@@ -192,6 +208,21 @@ int av_sync_pause(void *sync, bool pause)
 
     if (!avsync)
         return -1;
+
+    if (avsync->session_id == 1) {
+        if (!avsync->paused && pause) {
+            gettimeofday(&avsync->pause_start, NULL);
+            avsync->paused = true;
+        }
+        if (avsync->paused && !pause) {
+            struct timeval now;
+
+            gettimeofday(&now, NULL);
+            avsync->pause_duration += time_diff(&now, &avsync->pause_start);
+            avsync->paused = false;
+        }
+        return 0;
+    }
 
     if (avsync->mode == AV_SYNC_MODE_VMASTER) {
         tsync_send_video_pause(avsync->session_id, pause);
@@ -237,6 +268,32 @@ struct vframe *av_sync_pop_frame(void *sync)
     pthread_mutex_lock(&avsync->lock);
     if (avsync->state == AV_SYNC_STAT_INIT) {
         log_trace("in state INIT");
+        goto exit;
+    }
+
+    if (avsync->session_id == 1) {
+        if (peek_item(avsync->frame_q, (void **)&frame, 0) || !frame) {
+            log_info("empty q");
+            goto exit;
+        }
+
+        while (!peek_item(avsync->frame_q, (void **)&frame, 0)) {
+            if (frame_expire_pip(avsync, frame)) {
+                toggle_cnt++;
+
+                dqueue_item(avsync->frame_q, (void **)&frame);
+                if (avsync->last_frame) {
+                    /* free frame that are not for display */
+                    if (toggle_cnt > 1)
+                        avsync->last_frame->free(avsync->last_frame);
+                } else {
+                    avsync->first_frame_toggled = true;
+                    log_info("first frame %u", frame->pts);
+                }
+                avsync->last_frame = frame;
+            } else
+                break;
+        }
         goto exit;
     }
 
@@ -337,6 +394,44 @@ void av_sync_update_vsync_interval(void *sync, pts90K vsync_interval)
 static inline uint32_t abs_diff(uint32_t a, uint32_t b)
 {
     return a > b ? a - b : b - a;
+}
+
+static uint64_t time_diff (struct timeval *b, struct timeval *a)
+{
+    return (b->tv_sec - a->tv_sec)*1000000 + (b->tv_usec - a->tv_usec);
+}
+
+static bool frame_expire_pip(struct av_sync_session* avsync,
+        struct vframe * frame)
+{
+    struct timeval systime;
+    uint64_t passed;
+    pts90K passed_90k;
+
+    if (avsync->paused)
+        return false;
+
+    gettimeofday(&systime, NULL);
+    if (avsync->first_pts == -1) {
+        avsync->first_pts = frame->pts;
+        avsync->base_sys_time = systime;
+        log_debug("first_pts %u, sys %d/%d", frame->pts,
+            systime.tv_sec, systime.tv_usec);
+        return true;
+    }
+
+    passed = time_diff(&systime, &avsync->base_sys_time);
+    passed -= avsync->pause_duration;
+    passed *= avsync->speed;
+    passed_90k = (pts90K)(passed * 9 / 100);
+
+    if (passed_90k > (frame->pts - avsync->first_pts)) {
+        log_trace("cur_f %u sys: %u/%d stream: %u",
+            frame->pts, systime.tv_sec, systime.tv_usec, passed_90k);
+        return true;
+    }
+
+    return false;
 }
 
 static bool frame_expire(struct av_sync_session* avsync,
@@ -461,6 +556,11 @@ int av_sync_set_speed(void *sync, float speed)
         log_error("wrong speed %f [0.0001, 100]", speed);
         return -1;
     }
+
+    avsync->speed = speed;
+    if (avsync->session_id == 1)
+        return 0;
+
     if (avsync->mode != AV_SYNC_MODE_VMASTER) {
         log_info("ignore set speed in mode %d", avsync->mode);
         return 0;
@@ -475,6 +575,10 @@ int av_sync_change_mode(void *sync, enum sync_mode mode)
 
     if (!avsync)
         return -1;
+
+    if (avsync->session_id == 1)
+        return 0;
+
     if (avsync->mode != AV_SYNC_MODE_VMASTER || mode != AV_SYNC_MODE_AMASTER) {
         log_error("only support V to A mode switch");
         return -1;
