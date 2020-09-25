@@ -13,6 +13,7 @@
 #define AML_AVSYNC_H__
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <time.h>
 
 enum sync_mode {
