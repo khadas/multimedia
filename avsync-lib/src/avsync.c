@@ -226,12 +226,9 @@ int av_sync_pause(void *sync, bool pause)
 
     if (avsync->mode == AV_SYNC_MODE_VMASTER) {
         tsync_send_video_pause(avsync->session_id, pause);
-        avsync->paused = pause;
-        log_info("paused:%d\n", pause);
-    } else {
-        log_info("ignore paused:%d in mode %d",
-            avsync->paused, avsync->mode);
     }
+    avsync->paused = pause;
+    log_info("paused:%d\n", pause);
 
     return 0;
 }
