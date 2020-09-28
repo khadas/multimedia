@@ -109,6 +109,10 @@ static enum vtype v4l2_fourcc_to_vtype(uint32_t fourcc) {
             return VIDEO_TYPE_VP9;
         case V4L2_PIX_FMT_MPEG2:
             return VIDEO_TYPE_MPEG2;
+        case V4L2_PIX_FMT_MJPEG:
+            return VIDEO_TYPE_MJPEG;
+        case V4L2_PIX_FMT_AV1:
+            return VIDEO_TYPE_AV1;
     }
     return VIDEO_TYPE_MAX;
 }
@@ -246,16 +250,23 @@ static int setup_capture_port(int fd)
     coded_h = capture_p.sfmt.fmt.pix_mp.height;
     printf("capture port (%dx%d)\n", coded_w, coded_h);
 
-    if (g_dw_mode != VDEC_DW_AFBC_ONLY)
-        capture_p.sfmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12M;
-    else
-        capture_p.sfmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12;
+    if (g_dw_mode != VDEC_DW_AFBC_ONLY) {
+        capture_p.sfmt.fmt.pix_mp.pixelformat =
+            (output_p.pixelformat == V4L2_PIX_FMT_MJPEG) ?
+            V4L2_PIX_FMT_YUV420M : V4L2_PIX_FMT_NV12M;
+    } else {
+        capture_p.sfmt.fmt.pix_mp.pixelformat =
+            (output_p.pixelformat == V4L2_PIX_FMT_MJPEG) ?
+            V4L2_PIX_FMT_YUV420 : V4L2_PIX_FMT_NV12;
+    }
     ret = ioctl(video_fd, VIDIOC_S_FMT, &capture_p.sfmt);
     if (ret) {
         printf("VIDIOC_S_FMT fail %d\n", ret);
         return -1;
     }
     printf("set capture port to %s\n",
+            (output_p.pixelformat == V4L2_PIX_FMT_MJPEG) ?
+            (g_dw_mode == VDEC_DW_AFBC_ONLY)?"I420":"I420M" :
             (g_dw_mode == VDEC_DW_AFBC_ONLY)?"NV12":"NV12M");
     capture_p.plane_num = capture_p.sfmt.fmt.pix_mp.num_planes;
     printf("number of capture plane: %d\n", capture_p.plane_num);

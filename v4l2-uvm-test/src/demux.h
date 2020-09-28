@@ -19,6 +19,7 @@ enum vtype {
     VIDEO_TYPE_H265,
     VIDEO_TYPE_VP9,
     VIDEO_TYPE_AV1,
+    VIDEO_TYPE_MJPEG,
     VIDEO_TYPE_MAX
 };
 

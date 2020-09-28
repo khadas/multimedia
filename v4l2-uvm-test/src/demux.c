@@ -454,6 +454,8 @@ int demux_init(const char *file, struct dmx_cb *cb)
             v_data.type = VIDEO_TYPE_VP9;
         else if (dec_ctx->codec_id == AV_CODEC_ID_AV1)
             v_data.type = VIDEO_TYPE_AV1;
+        else if (dec_ctx->codec_id == AV_CODEC_ID_MJPEG)
+            v_data.type = VIDEO_TYPE_MJPEG;
         else {
             printf("format not supported %d\n", dec_ctx->codec_id);
             ret = 3;
