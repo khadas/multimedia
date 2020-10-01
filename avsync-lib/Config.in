@@ -1,4 +1,4 @@
-config BR2_PACKAGE_AV_SYNC_LIB
+config BR2_PACKAGE_AVSYNC_LIB
         bool "avsync-lib"
         help
           AV sync user library based on kernel tsync driver
