@@ -441,6 +441,9 @@ static bool frame_expire(struct av_sync_session* avsync,
     bool expire = false;
     uint32_t pts_correction = avsync->delay * avsync->vsync_interval;
 
+    if (avsync->paused)
+        return false;
+
     if (!fpts) {
         if (avsync->last_frame) {
             /* try to accumulate duration as PTS */
