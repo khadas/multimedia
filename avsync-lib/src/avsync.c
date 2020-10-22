@@ -68,6 +68,11 @@ struct  av_sync_session {
     struct timeval pause_start;
     uint64_t pause_duration;
     pts90K first_pts;
+
+    /* pause pts */
+    pts90K pause_pts;
+    pause_pts_done pause_pts_cb;
+    void *pause_cb_priv;
 };
 
 #define MAX_FRAME_NUM 32
@@ -131,6 +136,7 @@ void* av_sync_create(int session_id,
     avsync->last_frame = NULL;
     avsync->tsync_started = false;
     avsync->speed = 1.0f;
+    avsync->pause_pts = AV_SYNC_INVALID_PAUSE_PTS;
 
     if (!start_thres)
         avsync->start_thres = DEFAULT_START_THRESHOLD;
@@ -364,6 +370,27 @@ struct vframe *av_sync_pop_frame(void *sync)
             break;
     }
 
+    /* pause pts */
+    if (avsync->pause_pts != AV_SYNC_INVALID_PAUSE_PTS && avsync->last_frame) {
+        bool reached;
+
+        if (avsync->pause_pts == AV_SYNC_STEP_PAUSE_PTS)
+            reached = true;
+        else
+            reached = (int)(avsync->last_frame->pts - avsync->pause_pts) >= 0;
+
+        if (reached) {
+            if (avsync->pause_pts_cb)
+                avsync->pause_pts_cb(avsync->last_frame->pts,
+                    avsync->pause_cb_priv);
+
+            /* stay in paused until av_sync_pause(false) */
+            avsync->paused = true;
+            avsync->pause_pts = AV_SYNC_INVALID_PAUSE_PTS;
+            log_info ("reach pause pts: %u", avsync->last_frame->pts);
+        }
+    }
+
 exit:
     pthread_mutex_unlock(&avsync->lock);
     if (avsync->last_frame)
@@ -408,6 +435,9 @@ static bool frame_expire_pip(struct av_sync_session* avsync,
     if (avsync->paused)
         return false;
 
+    if (avsync->pause_pts == AV_SYNC_STEP_PAUSE_PTS)
+        return true;
+
     gettimeofday(&systime, NULL);
     if (avsync->first_pts == -1) {
         avsync->first_pts = frame->pts;
@@ -443,6 +473,9 @@ static bool frame_expire(struct av_sync_session* avsync,
 
     if (avsync->paused)
         return false;
+
+    if (avsync->pause_pts == AV_SYNC_STEP_PAUSE_PTS)
+        return true;
 
     if (!fpts) {
         if (avsync->last_frame) {
@@ -536,7 +569,6 @@ static bool frame_expire(struct av_sync_session* avsync,
             log_info("sync setup");
         avsync->state = AV_SYNC_STAT_SYNC_SETUP;
     }
-
     return expire;
 }
 
@@ -590,5 +622,28 @@ int av_sync_change_mode(void *sync, enum sync_mode mode)
         log_error("set amaster mode fail");
     avsync->mode = mode;
     log_info("update sync mode to %d", mode);
+    return 0;
+}
+
+int av_sync_set_pause_pts(void *sync, pts90K pts)
+{
+    struct av_sync_session *avsync = (struct av_sync_session *)sync;
+
+    if (!avsync)
+      return -1;
+
+    avsync->pause_pts = pts;
+    return 0;
+}
+
+int av_sync_set_pause_pts_cb(void *sync, pause_pts_done cb, void *priv)
+{
+    struct av_sync_session *avsync = (struct av_sync_session *)sync;
+
+    if (!avsync)
+      return -1;
+
+    avsync->pause_pts_cb = cb;
+    avsync->pause_cb_priv = priv;
     return 0;
 }

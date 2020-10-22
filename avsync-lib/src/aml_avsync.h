@@ -22,9 +22,13 @@ enum sync_mode {
     AV_SYNC_MODE_PCR_MASTER = 2,
 };
 
+#define AV_SYNC_INVALID_PAUSE_PTS 0xFFFFFFFF
+#define AV_SYNC_STEP_PAUSE_PTS 0xFFFFFFFE
+
 typedef uint32_t pts90K;
 struct vframe;
 typedef void (*free_frame)(struct vframe * frame);
+typedef void (*pause_pts_done)(uint32_t pts, void* priv);
 
 struct vframe {
     /* private user data */
@@ -128,4 +132,31 @@ int av_sync_set_speed(void *sync, float speed);
  */
 int av_sync_change_mode(void *sync, enum sync_mode mode);
 
+/* set pause PTS
+ * av sync will pause after reaching the assigned PTS or do step.
+ * Need to call @av_sync_pause(false) to resume a the playback.
+ * Params:
+ *   @sync: AV sync module handle
+ *   @pts: pause pts in uint of 90K.
+ *         AV_SYNC_STEP_PAUSE_PTS: step one frame, and the callback
+ *           will report pts value of the stepped frame.
+ *         AV_SYNC_INVALID_PAUSE_PTS: disable this feature.
+ *         Other value: play until the assigned PTS, and the callback
+ *           will report pts value of the paused frame.
+ * Return:
+ *   0 for OK, or error code
+ */
+int av_sync_set_pause_pts(void *sync, pts90K pts);
+
+/* set pause PTS call back
+ * av sync will callback when pause PTS is reached with assigned PTS from
+ * @av_sync_set_pause_pts.
+ * Params:
+ *   @sync: AV sync module handle
+ *   @cb: callback function
+ *   @priv: callback function parameter
+ * Return:
+ *   0 for OK, or error code
+ */
+int av_sync_set_pause_pts_cb(void *sync, pause_pts_done cb, void *priv);
 #endif
