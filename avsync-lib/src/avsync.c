@@ -432,7 +432,7 @@ static bool frame_expire_pip(struct av_sync_session* avsync,
     uint64_t passed;
     pts90K passed_90k;
 
-    if (avsync->paused)
+    if (avsync->paused && avsync->pause_pts == AV_SYNC_INVALID_PAUSE_PTS)
         return false;
 
     if (avsync->pause_pts == AV_SYNC_STEP_PAUSE_PTS)
@@ -471,7 +471,7 @@ static bool frame_expire(struct av_sync_session* avsync,
     bool expire = false;
     uint32_t pts_correction = avsync->delay * avsync->vsync_interval;
 
-    if (avsync->paused)
+    if (avsync->paused && avsync->pause_pts == AV_SYNC_INVALID_PAUSE_PTS)
         return false;
 
     if (avsync->pause_pts == AV_SYNC_STEP_PAUSE_PTS)
