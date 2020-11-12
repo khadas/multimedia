@@ -242,10 +242,19 @@ int av_sync_pause(void *sync, bool pause)
 int av_sync_push_frame(void *sync , struct vframe *frame)
 {
     int ret;
+    struct vframe *prev;
     struct av_sync_session *avsync = (struct av_sync_session *)sync;
 
     if (!avsync)
         return -1;
+
+    if (!peek_item(avsync->frame_q, (void **)&prev, 0)) {
+        if (prev->pts == frame->pts) {
+            dqueue_item(avsync->frame_q, (void **)&prev);
+            prev->free(prev);
+            log_info ("drop frame with same pts %u", frame->pts);
+        }
+    }
 
     frame->hold_period = 0;
     ret = queue_item(avsync->frame_q, frame);
