@@ -402,9 +402,10 @@ struct vframe *av_sync_pop_frame(void *sync)
 
 exit:
     pthread_mutex_unlock(&avsync->lock);
-    if (avsync->last_frame)
+    if (avsync->last_frame) {
         log_debug("pop %u", avsync->last_frame->pts);
-    else
+        tsync_set_vpts(avsync->session_id,avsync->last_frame->pts);
+    } else
         log_debug("pop (nil)");
     if (avsync->last_frame)
         avsync->last_frame->hold_period++;

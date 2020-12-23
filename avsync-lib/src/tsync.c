@@ -25,6 +25,7 @@
 #define TSYNC_PCRSCR "/sys/class/tsync/pts_pcrscr"
 #define TSYNC_EVENT  "/sys/class/tsync/event"
 #define TSYNC_MODE   "/sys/class/tsync/mode"
+#define TSYNC_VPTS   "/sys/class/tsync/pts_video"
 
 #define _A_M 'S'
 #define AMSTREAM_IOC_SYNCTHRESH _IOW((_A_M), 0x19, int)
@@ -191,4 +192,12 @@ int tsync_disable_video_stop_event(int session, bool disable)
 int tsync_set_speed(int session, float speed)
 {
     return video_device_ioctl(AMSTREAM_IOC_SET_VSYNC_SLOW_FACTOR, 1000000 * speed);
+}
+
+int tsync_set_vpts(int session, pts90K pts)
+{
+    char val[50];
+
+    snprintf(val, sizeof(val), "0x%x", pts);
+    return config_sys_node(TSYNC_VPTS, val);
 }
