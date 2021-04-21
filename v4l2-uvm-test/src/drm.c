@@ -124,6 +124,8 @@ struct aml_display {
     struct drm_frame *queue;
 #endif
     void * avsync;
+    int session;
+    int session_id;
     bool last_frame;
 };
 
@@ -692,6 +694,7 @@ int display_engine_start(int smode)
     unsigned int plane_id;
     int rc;
     drmModeModeInfo mode;
+    struct video_config config;
 
     secure_mode = smode;
 
@@ -808,11 +811,18 @@ int display_engine_start(int smode)
     }
 
     log_set_level((log_level >> 1) & 0x7);
-    aml_dis.avsync = av_sync_create(0, AV_SYNC_MODE_VMASTER, 2, 2, 90000/mode.vrefresh);
+    aml_dis.session = av_sync_open_session(&aml_dis.session_id);
+    if (aml_dis.session < 0) {
+        printf("Failed to alloc avsync session\n");
+        return -1;
+    }
+    aml_dis.avsync = av_sync_create(aml_dis.session_id, AV_SYNC_MODE_VMASTER, AV_SYNC_TYPE_VIDEO, 3);
     if (!aml_dis.avsync) {
         printf("create avsync fails\n");
         return -1;
     }
+    config.delay = 2;
+    av_sync_video_config(aml_dis.avsync, &config);
     return 0;
 }
 
@@ -892,9 +902,10 @@ int display_engine_stop()
     aml_dis.started = false;
     pthread_join(aml_dis.disp_t, NULL);
     close_buffer(drm_cli_fd, &osd_gem_buf);
-    if (aml_dis.avsync)
+    if (aml_dis.avsync) {
         av_sync_destroy(aml_dis.avsync);
-
+        av_sync_close_session (aml_dis.session);
+    }
 #if 0
     if (aml_dis.queue)
         free(aml_dis.queue);
