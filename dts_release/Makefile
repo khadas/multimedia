@@ -12,6 +12,7 @@ all:
 clean:
 	rm -f $(TARGET_DIR)/usr/lib/libHwAudio_dtsxp1.so \
 		$(TARGET_DIR)/usr/lib/libHwAudio_dtshd.so $(TARGET_DIR)/usr/lib/libdtscore.so
+	rm -f $(TARGET_DIR)/usr/lib/libvx.so
 
 install: clean
 	if [ -s ./$(SRC_DIR)/libHwAudio_dtsxp1.so ]; then \
@@ -23,6 +24,8 @@ install: clean
 	else \
 		echo "No DTS library is found. Install nothing."; \
 	fi
-
+	if [ -s ./$(SRC_DIR)/libvx.so ]; then \
+		install -m 0644 ./$(SRC_DIR)/libvx.so $(TARGET_DIR)/usr/lib/ ;\
+	fi
 
 uninstall: clean
