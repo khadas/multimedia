@@ -8,7 +8,7 @@ case "$1" in
     if [ ! -d "/tmp/ds/" ]; then
         mkdir -p /tmp/ds/
     fi
-    $DSD /usr/lib/libdolby_atmos.so   /tmp/ds/0xc7_0xfba4_0x5e.so
+    $DSD /usr/lib/libdolby_atmos.so   /tmp/ds/0xc7_0xfba4_0x5e.so || true
     ;;
     *)
     echo "Usage: S83dsd {start}" >&2
