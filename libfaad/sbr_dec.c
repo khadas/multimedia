@@ -472,17 +472,17 @@ uint8_t sbrDecodeCoupleFrame(sbr_info *sbr, real_t *left_chan, real_t *right_cha
     sbr->ret += sbr_process_channel(sbr, left_chan, X, 0, dont_process, downSampledSBR);
     /* subband synthesis */
     if (downSampledSBR) {
-        sbr_qmf_synthesis_32(sbr, sbr->qmfs[0], X, left_chan);
+        sbr_qmf_synthesis_32(sbr, sbr->qmfs[0], &X[0][0], left_chan);
     } else {
-        sbr_qmf_synthesis_64(sbr, sbr->qmfs[0], X, left_chan);
+        sbr_qmf_synthesis_64(sbr, sbr->qmfs[0], &X[0][0], left_chan);
     }
 
     sbr->ret += sbr_process_channel(sbr, right_chan, X, 1, dont_process, downSampledSBR);
     /* subband synthesis */
     if (downSampledSBR) {
-        sbr_qmf_synthesis_32(sbr, sbr->qmfs[1], X, right_chan);
+        sbr_qmf_synthesis_32(sbr, sbr->qmfs[1], &X[0][0], right_chan);
     } else {
-        sbr_qmf_synthesis_64(sbr, sbr->qmfs[1], X, right_chan);
+        sbr_qmf_synthesis_64(sbr, sbr->qmfs[1], &X[0][0], right_chan);
     }
 
     if (sbr->bs_header_flag) {
@@ -556,9 +556,9 @@ uint8_t sbrDecodeSingleFrame(sbr_info *sbr, real_t *channel,
     sbr->ret += sbr_process_channel(sbr, channel, X, 0, dont_process, downSampledSBR);
     /* subband synthesis */
     if (downSampledSBR) {
-        sbr_qmf_synthesis_32(sbr, sbr->qmfs[0], X, channel);
+        sbr_qmf_synthesis_32(sbr, sbr->qmfs[0], &X[0][0], channel);
     } else {
-        sbr_qmf_synthesis_64(sbr, sbr->qmfs[0], X, channel);
+        sbr_qmf_synthesis_64(sbr, sbr->qmfs[0], &X[0][0], channel);
     }
 
     if (sbr->bs_header_flag) {
@@ -653,11 +653,11 @@ uint8_t sbrDecodeSingleFramePS(sbr_info *sbr, real_t *left_channel, real_t *righ
 
     /* subband synthesis */
     if (downSampledSBR) {
-        sbr_qmf_synthesis_32(sbr, sbr->qmfs[0], X_left, left_channel);
-        sbr_qmf_synthesis_32(sbr, sbr->qmfs[1], X_right, right_channel);
+        sbr_qmf_synthesis_32(sbr, sbr->qmfs[0], &X_left[0][0], left_channel);
+        sbr_qmf_synthesis_32(sbr, sbr->qmfs[1], &X_right[0][0], right_channel);
     } else {
-        sbr_qmf_synthesis_64(sbr, sbr->qmfs[0], X_left, left_channel);
-        sbr_qmf_synthesis_64(sbr, sbr->qmfs[1], X_right, right_channel);
+        sbr_qmf_synthesis_64(sbr, sbr->qmfs[0], &X_left[0][0], left_channel);
+        sbr_qmf_synthesis_64(sbr, sbr->qmfs[1], &X_right[0][0], right_channel);
     }
 
     if (sbr->bs_header_flag) {

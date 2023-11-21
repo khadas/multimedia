@@ -374,7 +374,7 @@ void sbr_qmf_synthesis_64(sbr_info *sbr, qmfs_info *qmfs, qmf_t X[MAX_NTSRHFG][6
     }
 }
 #else
-void sbr_qmf_synthesis_32(sbr_info *sbr, qmfs_info *qmfs, qmf_t X[MAX_NTSRHFG][64],
+void sbr_qmf_synthesis_32(sbr_info *sbr, qmfs_info *qmfs, qmf_t *X,
                           real_t *output)
 {
     ALIGN real_t x1[32], x2[32];
@@ -383,6 +383,7 @@ void sbr_qmf_synthesis_32(sbr_info *sbr, qmfs_info *qmfs, qmf_t X[MAX_NTSRHFG][6
 #endif
     int32_t n, k, out = 0;
     uint8_t l;
+    qmf_t* pX;
 
 
     /* qmf subsample l */
@@ -393,9 +394,10 @@ void sbr_qmf_synthesis_32(sbr_info *sbr, qmfs_info *qmfs, qmf_t X[MAX_NTSRHFG][6
 
         /* calculate 64 samples */
         /* complex pre-twiddle */
+        pX = X + 64*l;
         for (k = 0; k < 32; k++) {
-            x1[k] = MUL_F(QMF_RE(X[l][k]), RE(qmf32_pre_twiddle[k])) - MUL_F(QMF_IM(X[l][k]), IM(qmf32_pre_twiddle[k]));
-            x2[k] = MUL_F(QMF_IM(X[l][k]), RE(qmf32_pre_twiddle[k])) + MUL_F(QMF_RE(X[l][k]), IM(qmf32_pre_twiddle[k]));
+            x1[k] = MUL_F(QMF_RE(pX[k]), RE(qmf32_pre_twiddle[k])) - MUL_F(QMF_IM(pX[k]), IM(qmf32_pre_twiddle[k]));
+            x2[k] = MUL_F(QMF_IM(pX[k]), RE(qmf32_pre_twiddle[k])) + MUL_F(QMF_RE(pX[k]), IM(qmf32_pre_twiddle[k]));
 
 #ifndef FIXED_POINT
             x1[k] *= scale;
@@ -437,7 +439,7 @@ void sbr_qmf_synthesis_32(sbr_info *sbr, qmfs_info *qmfs, qmf_t X[MAX_NTSRHFG][6
     }
 }
 
-void sbr_qmf_synthesis_64(sbr_info *sbr, qmfs_info *qmfs, qmf_t X[MAX_NTSRHFG][64],
+void sbr_qmf_synthesis_64(sbr_info *sbr, qmfs_info *qmfs, qmf_t *X,
                           real_t *output)
 {
     //    ALIGN real_t x1[64], x2[64];
@@ -474,7 +476,8 @@ void sbr_qmf_synthesis_64(sbr_info *sbr, qmfs_info *qmfs, qmf_t X[MAX_NTSRHFG][6
         /* calculate 128 samples */
 #ifndef FIXED_POINT
 
-        pX = X[l];
+        //pX = X[l];
+        pX = X+64*l;
 
         in_imag1[31] = scale * QMF_RE(pX[1]);
         in_real1[0]  = scale * QMF_RE(pX[0]);
@@ -493,7 +496,8 @@ void sbr_qmf_synthesis_64(sbr_info *sbr, qmfs_info *qmfs, qmf_t X[MAX_NTSRHFG][6
 
 #else
 
-        pX = X[l];
+        //pX = X[l];
+        pX = X+64*l;
 
         in_imag1[31] = QMF_RE(pX[1]) >> 1;
         in_real1[0]  = QMF_RE(pX[0]) >> 1;
