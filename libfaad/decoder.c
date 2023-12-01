@@ -1005,11 +1005,15 @@ NEXT_CHECK:
             goto NEXT_CHECK;
         }
         if (pbuffer_size < (LOAS_HEADER_SIZE + i_frame_size)) {
+            if (0 == is_latm_external)
+            {
+                goto adts_check;
+            }
             LATM_LOG("[%s %d]buffer size  %d small then frame size %d,\n", __FUNCTION__,__LINE__,pbuffer_size, i_frame_size+LOAS_HEADER_SIZE);
             *skipbytes = buffer_size-pbuffer_size;
             return -1;
         }
-#if 1
+#if 0
         if (pbuffer[LOAS_HEADER_SIZE + i_frame_size] != 0x56 || (pbuffer[LOAS_HEADER_SIZE + i_frame_size + 1] & 0xe0) != 0xe0) { // next frame LOAS sync header detected
             LATM_LOG("emulated sync word no (sync on following frame) \n");
             pbuffer++;
@@ -1084,6 +1088,8 @@ exit_check:
             return x;
         } else
 #endif
+
+adts_check:
             /* Check if an ADIF header is present */
             if ((buffer[0] == 'A') && (buffer[1] == 'D') &&
                 (buffer[2] == 'I') && (buffer[3] == 'F')) {
@@ -1782,7 +1788,7 @@ NEXT_CHECK:
             LATM_LOG("buffer size small then frame size,need more data\n");
             return NULL;
         }
-#if 1
+#if 0
         if (buffer[3 + i_frame_size] != 0x56 || (buffer[3 + i_frame_size + 1] & 0xe0) != 0xe0) {
 
             LATM_LOG("emulated sync word (no sync on following frame) \n");

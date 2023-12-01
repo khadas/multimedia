@@ -383,11 +383,6 @@ retry:
                 audio_codec_print("[%s %d]latm seek sync header cost %d,total %d,left %d \n", __FUNCTION__,__LINE__, nSeekNum, inbuf_size, inbuf_size - nSeekNum);
             }
             inbuf_size = inbuf_size - nSeekNum;
-            if (inbuf_size < (int)(get_frame_size(gFaadCxt) + FRAME_SIZE_MARGIN)/*AAC_INPUTBUF_SIZE/2*/) {
-                audio_codec_print("[%s %d]input size %d at least %d ,need more data \n", __FUNCTION__,__LINE__, inbuf_size, (get_frame_size(gFaadCxt) + FRAME_SIZE_MARGIN));
-                *inbuf_consumed = inlen - inbuf_size;
-                return AAC_ERROR_NO_ENOUGH_DATA;
-            }
         }
     }
 
@@ -410,7 +405,8 @@ retry:
             inbuf_size = 0;
         }
         audio_codec_print("init fail,inbuf_size %d \n", inbuf_size);
-        if (inbuf_size < (int)(get_frame_size(gFaadCxt) + FRAME_SIZE_MARGIN) || skipbytes == 0) {
+        //if (inbuf_size < (int)(get_frame_size(gFaadCxt) + FRAME_SIZE_MARGIN) || skipbytes == 0) {
+        if (skipbytes == 0) {
             audio_codec_print("skipbytes/%d inbuf_size/%d get_frame_size()/%d ,need more data \n",skipbytes, inbuf_size, (get_frame_size(gFaadCxt) + FRAME_SIZE_MARGIN));
             *inbuf_consumed = inlen - inbuf_size;
             return AAC_ERROR_NO_ENOUGH_DATA;
@@ -500,9 +496,6 @@ int audio_dec_decode(
             audio_codec_print("%d bytes data not found adts sync header \n", nSeekNum);
         }
         dec_bufsize = dec_bufsize - nSeekNum;
-        if (dec_bufsize < (int)(get_frame_size(gFaadCxt) + FRAME_SIZE_MARGIN)/*AAC_INPUTBUF_SIZE/2*/) {
-            goto exit;
-        }
     }
     if (hDecoder->latm_header_present) {
         int nSeekNum = AACFindLATMSyncWord((unsigned char *)dec_buf, dec_bufsize);
@@ -510,11 +503,9 @@ int audio_dec_decode(
             audio_codec_print("%d bytes data not found latm sync header \n", nSeekNum);
         }
         dec_bufsize = dec_bufsize - nSeekNum;
-        if (dec_bufsize < (int)(get_frame_size(gFaadCxt) + FRAME_SIZE_MARGIN)/*AAC_INPUTBUF_SIZE/2*/) {
-            goto exit;
-        }
     }
     sample_buffer = NeAACDecDecode(gFaadCxt->hDecoder, &frameInfo, (unsigned char *)dec_buf, dec_bufsize);
+    //audio_codec_print("dec_bufsize:%d, frameInfo.bytesconsumed:%lu, frameInfo.samples:%lu, frameInfo.error:%u", dec_bufsize, frameInfo.bytesconsumed, frameInfo.samples, frameInfo.error);
     dec_bufsize -= frameInfo.bytesconsumed;
     if (frameInfo.channels < 0 || frameInfo.channels > 8) {
         audio_codec_print("[%s %d]ERR__Unvalid Nch/%d bytesconsumed/%d error/%d\n",
