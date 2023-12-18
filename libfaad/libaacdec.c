@@ -541,8 +541,8 @@ int audio_dec_decode(
 
     if (frameInfo.error > 0) { //failed seek to the head
         if (frameInfo.error != 34 && frameInfo.error != 35) {
-            dec_bufsize -= RSYNC_SKIP_BYTES;
-            audio_codec_print("Error: %s,inlen %d\n", NeAACDecGetErrorMessage(frameInfo.error), inlen);
+            //dec_bufsize -= RSYNC_SKIP_BYTES; do not need rsync skip for data had been parsed already
+            //audio_codec_print("Error: %s,lslsinlen %d\n", NeAACDecGetErrorMessage(frameInfo.error), inlen);
         }
         // sr/ch changed info happened 5 times always,some times error maybe,skip bytes
         else if (frameInfo.error == 34 && gFaadCxt->error_count > 5) {
