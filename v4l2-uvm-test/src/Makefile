@@ -8,7 +8,7 @@ TARGET = v4l2-uvm-test
 all: $(TARGET)
 
 #TARGET_CFLAGS += -DDEBUG_FRAME
-LD_FLAG = -ldrm -lavformat -lavcodec -lavutil -lm -lpthread -lz -lswresample -lamlavsync
+LD_FLAG = -ldrm -lavformat -lavcodec -lavutil -lm -lpthread -lz -lswresample -lamlavsync -ldrm_meson
 
 ifeq ($(SECMEM), 1)
 OBJ += secmem.c

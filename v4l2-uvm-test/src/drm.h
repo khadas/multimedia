@@ -11,6 +11,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <meson_drm_util.h>
 
 enum frame_format {
     FRAME_FMT_NV12,

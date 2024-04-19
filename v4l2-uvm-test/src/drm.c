@@ -115,13 +115,15 @@ struct display_setup {
 
 struct aml_display {
     bool started;
+    bool recycle_started;
     pthread_t disp_t;
-#if 0
+    pthread_t recycle_t;
+#if 1
     unsigned int q_len;
     unsigned int ri; //read index
     unsigned int wi; //write index
     unsigned int total_num;
-    struct drm_frame *queue;
+    struct drm_frame **queue;
 #endif
     void * avsync;
     int session;
@@ -696,6 +698,7 @@ int display_engine_start(int smode)
     drmModeModeInfo mode;
     struct video_config config;
 
+    memset(&config,0,sizeof(struct video_config));
     secure_mode = smode;
 
     drm_fd = drmOpen("meson", drm_master_dev_name);
@@ -816,12 +819,13 @@ int display_engine_start(int smode)
         printf("Failed to alloc avsync session\n");
         return -1;
     }
-    aml_dis.avsync = av_sync_create(aml_dis.session_id, AV_SYNC_MODE_VMASTER, AV_SYNC_TYPE_VIDEO, 3);
+    aml_dis.avsync = av_sync_create(aml_dis.session_id, AV_SYNC_MODE_VMASTER, AV_SYNC_TYPE_VIDEO, 2);
     if (!aml_dis.avsync) {
         printf("create avsync fails\n");
         return -1;
     }
     config.delay = 2;
+    config.extra_delay = 0;
     av_sync_video_config(aml_dis.avsync, &config);
     return 0;
 }
@@ -900,13 +904,15 @@ int display_get_buffer_fds(struct drm_frame* drm_f, int *fd, int cnt)
 int display_engine_stop()
 {
     aml_dis.started = false;
+    aml_dis.recycle_started = false;
     pthread_join(aml_dis.disp_t, NULL);
+    pthread_join(aml_dis.recycle_t, NULL);
     close_buffer(drm_cli_fd, &osd_gem_buf);
     if (aml_dis.avsync) {
         av_sync_destroy(aml_dis.avsync);
         av_sync_close_session (aml_dis.session);
     }
-#if 0
+#if 1
     if (aml_dis.queue)
         free(aml_dis.queue);
 #endif
@@ -935,12 +941,12 @@ int display_engine_stop()
     return 0;
 }
 
-#if 0
+#if 1
 static int queue_frame(struct drm_frame* frame)
 {
     if (aml_dis.total_num == aml_dis.q_len)
         return -1;
-    aml_dis.queue[aml_dis.wi] = *frame;
+    aml_dis.queue[aml_dis.wi] = frame;
     if (aml_dis.wi == aml_dis.q_len - 1)
         aml_dis.wi = 0;
     else
@@ -950,7 +956,7 @@ static int queue_frame(struct drm_frame* frame)
     return 0;
 }
 
-static int dequeue_frame(struct drm_frame* frame)
+static int dequeue_frame(struct drm_frame** frame)
 {
     if (!aml_dis.total_num)
         return -1;
@@ -968,11 +974,11 @@ static int dequeue_frame(struct drm_frame* frame)
 static void * display_thread_func(void * arg)
 {
     struct vframe *sync_frame;
-    struct drm_frame *f = NULL, *f_p1 = NULL, *f_p2 = NULL, *f_p3 = NULL;
+    struct drm_frame *f = NULL, *f_p1 = NULL;
+    bool first_frame_rendered = false;
     drmVBlank vbl;
 
     memset(&vbl, 0, sizeof(drmVBlank));
-
     while (aml_dis.started) {
         int rc;
         struct gem_buffer* gem_buf;
@@ -980,17 +986,16 @@ static void * display_thread_func(void * arg)
         vbl.request.type = DRM_VBLANK_RELATIVE;
         vbl.request.sequence = 1;
         vbl.request.signal = 0;
-
-        rc = drmWaitVBlank(drm_fd, &vbl);
-        if (rc) {
-            printf("drmWaitVBlank error %d\n", rc);
-            return NULL;
+        if (first_frame_rendered) {
+            rc = drmWaitVBlank(drm_fd, &vbl);
+            if (rc) {
+                printf("drmWaitVBlank error %d\n", rc);
+                return NULL;
+            }
         }
-
         sync_frame = av_sync_pop_frame(aml_dis.avsync);
         if (!sync_frame)
             continue;
-
         f = sync_frame->private;
 
         if (!f) {
@@ -998,7 +1003,7 @@ static void * display_thread_func(void * arg)
             break;
         }
 
-        log_debug("pop frame: %u", f->pts);
+        printf("pop frame: %u", f->pts);
         if (f != f_p1) {
             gem_buf = f->gem;
             rc = page_flip(drm_fd, setup.crtc_id, setup.plane_id,
@@ -1007,19 +1012,51 @@ static void * display_thread_func(void * arg)
                 printf("page_flip error\n");
                 continue;
             }
-            /* 2 fence delay on video layer, 1 fence delay on osd */
-            if (f_p3) {
-                display_cb(f_p3->pri_dec);
-                free(f_p3->pri_sync);
+            if (f_p1) {
+               if (queue_frame(f_p1))
+               {
+                   printf("aml_dis queue not enough space");
+                   display_cb(f_p1->pri_dec);
+               }
             }
 
-            f_p3 = f_p2;
-            f_p2 = f_p1;
             f_p1 = f;
+            first_frame_rendered = true;
         }
     }
+    if (f_p1)
+      display_cb(f_p1->pri_dec);
     printf("quit %s\n", __func__);
     return NULL;
+}
+
+static void * recycle_thread_func(void * arg)
+{
+  struct gem_buffer* gem_buf;
+  struct drm_frame *f = NULL;
+  int rc;
+  while (aml_dis.recycle_started)
+  {
+    if (dequeue_frame(&f) < 0)
+    {
+       usleep(5000);
+       continue;
+    }
+    if (!f) {
+      usleep(5000);
+      continue;
+    }
+    gem_buf = f->gem;
+    rc = drm_waitvideoFence((int)gem_buf->export_fds[0]);
+    if (rc <= 0)
+       printf("wait fence error %d", rc);
+    display_cb(f->pri_dec);
+  }
+  while (!dequeue_frame(&f)) {
+      display_cb(f->pri_dec);
+  }
+  printf("quit %s", __func__);
+  return NULL;
 }
 
 static void sync_frame_free(struct vframe * sync_frame)
@@ -1039,7 +1076,7 @@ int display_engine_show(struct drm_frame* frame)
     struct vframe* sync_frame;
 
     if (!aml_dis.started) {
-#if 0
+#if 1
         aml_dis.queue = (struct drm_frame*)calloc(MAX_BUF_SIZE, sizeof(*aml_dis.queue));
         if (!aml_dis.queue) {
             printf("%s OOM\n", __func__);
@@ -1054,6 +1091,12 @@ int display_engine_show(struct drm_frame* frame)
         rc = pthread_create(&aml_dis.disp_t, NULL, display_thread_func, NULL);
         if (rc) {
             printf("create dispay thread fails\n");
+            return -1;
+        }
+        aml_dis.recycle_started = true;
+        rc = pthread_create(&aml_dis.recycle_t, NULL, recycle_thread_func, NULL);
+        if (rc) {
+            printf("create recycle thread fails\n");
             return -1;
         }
     }
